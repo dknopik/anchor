@@ -113,12 +113,8 @@ async fn main() {
     let executor = blackbox();
 
     let tx = if sched {
-        spawn::<dyn AnchorWork, DeadlineScheduler>(
-            Config::default(),
-            DeadlineScheduler,
-            executor,
-        )
-        .await
+        spawn::<dyn AnchorWork, DeadlineScheduler>(Config::default(), DeadlineScheduler, executor)
+            .await
     } else {
         spawn::<dyn AnchorWork, AnchorWorkQueues>(
             Config::default(),

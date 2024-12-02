@@ -14,7 +14,6 @@ pub struct DropOnFinish {
 }
 
 pub trait Work<T>: Send {
-
     fn run(self, state: &mut T, runner: TaskRunner);
     fn kind_name(&self) -> &'static str;
 }
@@ -56,11 +55,7 @@ pub trait Scheduler<W>: Send {
     fn next_task(&mut self) -> impl std::future::Future<Output = Option<W>> + Send;
 }
 
-pub async fn spawn<W, S, T>(
-    config: Config,
-    scheduler: S,
-    executor: TaskExecutor,
-) -> mpsc::Sender<W>
+pub async fn spawn<W, S, T>(config: Config, scheduler: S, executor: TaskExecutor) -> mpsc::Sender<W>
 where
     W: Work<T> + 'static,
     S: Scheduler<W> + Default + 'static,

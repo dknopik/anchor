@@ -32,12 +32,8 @@ struct QBFTStore {
 }
 
 enum AnchorWork {
-    StartQBFTInstance {
-        round: i64,
-    },
-    SomethingQBFTInstance {
-        round: i64,
-    }
+    StartQBFTInstance { round: i64 },
+    SomethingQBFTInstance { round: i64 },
 }
 
 impl Work<QBFTStore> for AnchorWork {
@@ -51,16 +47,14 @@ impl Work<QBFTStore> for AnchorWork {
                 });
                 state.instances.insert(round, tx);
             }
-            AnchorWork::SomethingQBFTInstance { round } => {
-                runner.run_immediate(|drop_on_finish| {
-                    state
-                        .instances
-                        .get(&round)
-                        .unwrap()
-                        .try_send((42, drop_on_finish))
-                        .unwrap()
-                })
-            }
+            AnchorWork::SomethingQBFTInstance { round } => runner.run_immediate(|drop_on_finish| {
+                state
+                    .instances
+                    .get(&round)
+                    .unwrap()
+                    .try_send((42, drop_on_finish))
+                    .unwrap()
+            }),
         }
     }
 
@@ -103,7 +97,9 @@ async fn main() {
     };
 
     let _ = tx.send(AnchorWork::StartQBFTInstance { round: 0 }).await;
-    let _ = tx.send(AnchorWork::SomethingQBFTInstance { round: 0 }).await;
+    let _ = tx
+        .send(AnchorWork::SomethingQBFTInstance { round: 0 })
+        .await;
 }
 
 fn blackbox<T>() -> T {
