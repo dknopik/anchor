@@ -5,8 +5,9 @@ authors = ["Sigma Prime <contact@sigmaprime.io"]
 edition = { workspace = true }
 
 [dependencies]
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "macros"] }
 tracing = { workspace = true }
 task_executor = { workspace = true }
 serde = { workspace = true }
 num_cpus = { workspace = true }
+metrics = { workspace = true }

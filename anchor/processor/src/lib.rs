@@ -1,3 +1,7 @@
+pub mod experiment;
+pub mod experiment2;
+mod metrics;
+
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
@@ -31,25 +35,37 @@ impl Sender {
         Self { name, tx }
     }
 
-    pub fn send_async(&mut self, future: AsyncFn) {
-        self.send_work_item(WorkItem::new_async(self.name, future));
+    pub fn send_async(&mut self, future: AsyncFn) -> Result<(), TrySendError<WorkItem>> {
+        self.send_work_item(WorkItem::new_async(self.name, future))
     }
 
-    pub fn send_blocking(&mut self, func: BlockingFn) {
-        self.send_work_item(WorkItem::new_blocking(self.name, func));
+    pub fn send_blocking(&mut self, func: BlockingFn) -> Result<(), TrySendError<WorkItem>> {
+        self.send_work_item(WorkItem::new_blocking(self.name, func))
     }
 
-    pub fn send_work_item(&mut self, item: WorkItem) {
-        if let Err(err) = self.tx.try_send(item) {
+    fn send_work_item(&mut self, item: WorkItem) -> Result<(), TrySendError<WorkItem>> {
+        let result = self.tx.try_send(item);
+        if let Err(err) = &result {
+            metrics::inc_counter_vec(
+                &metrics::ANCHOR_PROCESSOR_SEND_ERROR_PER_WORK_TYPE,
+                &[self.name],
+            );
             match err {
-                TrySendError::Full(item) => {
-                    warn!(task = item.name, "Processor queue full")
+                TrySendError::Full(_) => {
+                    warn!(task = self.name, "Processor queue full")
                 }
                 TrySendError::Closed(_) => {
                     error!("Processor queue closed unexpectedly")
                 }
             }
+        } else {
+            metrics::inc_counter_vec(
+                &metrics::ANCHOR_PROCESSOR_WORK_EVENTS_SUBMITTED_COUNT,
+                &[self.name],
+            );
+            metrics::inc_gauge_vec(&metrics::ANCHOR_PROCESSOR_QUEUE_LENGTH, &[self.name]);
         }
+        result
     }
 }
 
@@ -109,6 +125,7 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
     let semaphore = Arc::new(Semaphore::new(config.max_workers));
 
     loop {
+        let _timer = metrics::start_timer(&metrics::ANCHOR_PROCESSOR_EVENT_HANDLING_SECONDS);
         let Ok(permit) = semaphore.clone().acquire_owned().await else {
             error!("Processor semaphore closed unexpectedly");
             break;
@@ -123,10 +140,19 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
             }
         };
 
+        metrics::inc_gauge(&metrics::ANCHOR_PROCESSOR_WORKERS_ACTIVE_TOTAL);
+        metrics::inc_counter_vec(
+            &metrics::ANCHOR_PROCESSOR_WORK_EVENTS_STARTED_COUNT,
+            &[work_item.name],
+        );
+        let work_timer =
+            metrics::start_timer_vec(&metrics::ANCHOR_PROCESSOR_WORKER_TIME, &[work_item.name]);
         match work_item.func {
             AsyncOrBlocking::Async(async_fn) => executor.spawn(
                 async move {
                     async_fn.await;
+                    drop(work_timer);
+                    metrics::dec_gauge(&metrics::ANCHOR_PROCESSOR_WORKERS_ACTIVE_TOTAL);
                     drop(permit);
                 },
                 work_item.name,
@@ -135,6 +161,8 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
                 executor.spawn_blocking(
                     move || {
                         blocking_fn();
+                        drop(work_timer);
+                        metrics::dec_gauge(&metrics::ANCHOR_PROCESSOR_WORKERS_ACTIVE_TOTAL);
                         drop(permit);
                     },
                     work_item.name,
