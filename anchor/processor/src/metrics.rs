@@ -34,6 +34,13 @@ pub static ANCHOR_PROCESSOR_WORKERS_ACTIVE_TOTAL: LazyLock<Result<IntGauge>> =
             "Count of active workers in the processing pool.",
         )
     });
+pub static ANCHOR_PROCESSOR_PERMIT_WORKERS_ACTIVE_TOTAL: LazyLock<Result<IntGauge>> =
+    LazyLock::new(|| {
+        try_create_int_gauge(
+            "anchor_processor_permit_workers_active_total",
+            "Count of active workers in the processing pool, holding one permit.",
+        )
+    });
 pub static ANCHOR_PROCESSOR_EVENT_HANDLING_SECONDS: LazyLock<Result<Histogram>> =
     LazyLock::new(|| {
         try_create_histogram(
