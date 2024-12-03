@@ -1,3 +1,12 @@
+//! Central processor, serving roughly the same purpose as Lighthouse's `beacon_processor`.
+//!
+//! The processor does not centrally define the available work items, but provides [`WorkItem`]
+//! which can be used to send work to the processor via [`Sender`]s. The processor then retrieves
+//! work items from priority-ranked queues and launches the items in a way corresponding to their
+//! type. For most queues, a permit is needed, which are handed out by the processor up to a
+//! configured value, effectively limiting the number of concurrent tasks. This avoids overloading
+//! the system and prioritizes items based on the queues they were submitted to.
+
 mod metrics;
 
 use qbft::{InMessage, InstanceHeight};
@@ -14,8 +23,12 @@ use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
 use tracing::{error, warn};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Configuration for a processor. Provided to [spawn].
 pub struct Config {
+    /// The maximum amount of concurrent workers. Note that [WorkItem]s submitted via
+    /// [Senders::permitless_tx] do not count towards this limit. By default, this is the number of
+    /// logical CPUs.
     pub max_workers: usize,
 }
 
@@ -27,11 +40,13 @@ impl Default for Config {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Sender {
     tx: mpsc::Sender<WorkItem>,
 }
 
 impl Sender {
+    /// Convenience method creating an async [`WorkItem`] and sending it.
     pub fn send_async(
         &mut self,
         future: AsyncFn,
@@ -45,6 +60,7 @@ impl Sender {
         })
     }
 
+    /// Convenience method creating a blocking [`WorkItem`] and sending it.
     pub fn send_blocking(
         &mut self,
         func: BlockingFn,
@@ -58,6 +74,7 @@ impl Sender {
         })
     }
 
+    /// Convenience method creating an immediate [`WorkItem`] and sending it.
     pub fn send_immediate(
         &mut self,
         func: ImmediateFn,
@@ -71,6 +88,8 @@ impl Sender {
         })
     }
 
+    /// Sends a [`WorkItem`] into the queue, non-blocking, returning an error if the queue is full.
+    /// Handles metrics and logging for you.
     pub fn send_work_item(&mut self, item: WorkItem) -> Result<(), TrySendError<WorkItem>> {
         let name = item.name;
         let result = self.tx.try_send(item);
@@ -95,7 +114,12 @@ impl Sender {
     }
 }
 
+/// Bag of available senders relevant for the Anchor client.
+#[derive(Clone, Debug)]
 pub struct Senders {
+    /// Catch-all queue for tasks that are either very quick to run or behave well as async task in
+    /// the Tokio runtime. Is launched immediately and does not require capacity as defined by
+    /// [`Config::max_worker`].
     pub permitless_tx: Sender,
     pub example2_tx: Sender,
     // todo add all the needed queues here
@@ -112,12 +136,14 @@ pub type BlockingFn = Box<dyn FnOnce() + Send>;
 pub type ImmediateFn = Box<dyn FnOnce(&ProcessorState, DropOnFinish) + Send>;
 pub type StateModifierFn = Box<dyn FnOnce(&mut ProcessorState) + Send>;
 
+#[derive(Debug)]
 enum WorkKind {
     Async(AsyncFn),
     Blocking(BlockingFn),
     Immediate(ImmediateFn),
 }
 
+#[derive(Debug)]
 pub struct WorkItem {
     func: WorkKind,
     expiry: Option<Instant>,
@@ -126,6 +152,7 @@ pub struct WorkItem {
 }
 
 impl WorkItem {
+    /// Create an async work task. Will be spawned on the Tokio runtime.
     pub fn new_async(name: &'static str, func: AsyncFn) -> Self {
         Self {
             name,
@@ -135,6 +162,7 @@ impl WorkItem {
         }
     }
 
+    /// Create a blocking work task. Will be spawned on the Tokio runtime using `spawn_blocking`.
     pub fn new_blocking(name: &'static str, func: BlockingFn) -> Self {
         Self {
             name,
@@ -144,6 +172,12 @@ impl WorkItem {
         }
     }
 
+    /// Create an immediate work task. Has access to the [`ProcessorState`], and is thus ideal for
+    /// triggering some process, e.g. via a queue retrieved from the state. Must *NEVER* block!
+    ///
+    /// The [`DropOnFinish`] should be dropped when the work is done, for proper permit accounting
+    /// and metrics. This includes any work triggered by the closure, so [`DropOnFinish`] should
+    /// be sent along if any other process such as a QBFT instance is messaged.
     pub fn new_immediate(name: &'static str, func: ImmediateFn) -> Self {
         Self {
             name,
@@ -153,6 +187,8 @@ impl WorkItem {
         }
     }
 
+    /// Set expiry of this work item. If the processor retrieves the work item after the expiry,
+    /// it drops the work item instead.
     pub fn set_expiry(&mut self, expiry: Option<Instant>) {
         self.expiry = expiry;
     }
@@ -162,6 +198,8 @@ impl WorkItem {
         self
     }
 
+    /// Before starting the work, modify the [`ProcessorState`]. Useful for storing stuff to be used
+    /// by [immediate](new_immediate) [`WorkItem`]s.
     pub fn set_state_modifier(&mut self, state_modifier: Option<StateModifierFn>) {
         self.state_modifier = state_modifier;
     }
@@ -172,6 +210,8 @@ impl WorkItem {
     }
 }
 
+/// Refunds the permit and updates metrics on drop.
+#[derive(Debug)]
 pub struct DropOnFinish {
     permit: Option<OwnedSemaphorePermit>,
     _work_timer: Option<metrics::HistogramTimer>,
@@ -185,12 +225,15 @@ impl Drop for DropOnFinish {
     }
 }
 
-#[derive(Default)]
+/// Contains several items necessary for processing immediate work items, such as queues for
+/// triggering work in other parts of the client.
+#[derive(Default, Debug)]
 pub struct ProcessorState {
     // placeholder, of course we also have to separate by validator and set data type
-    qbft_instances: HashMap<InstanceHeight, UnboundedSender<InMessage<()>>>,
+    pub qbft_instances: HashMap<InstanceHeight, UnboundedSender<InMessage<()>>>,
 }
 
+/// Create a new processor and spawn it with the given executor. Returns the queue senders.
 pub async fn spawn(config: Config, executor: TaskExecutor) -> Senders {
     // todo macro? just specifying name and capacity?
     let (permitless_tx, permitless_rx) = mpsc::channel(1000);
@@ -216,6 +259,8 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
     loop {
         let _timer = metrics::start_timer(&metrics::ANCHOR_PROCESSOR_EVENT_HANDLING_SECONDS);
 
+        // Try to get the next work event. work_item will only be None when the queues are closed.
+        // Permit will be None when the event was received from permitless_rx.
         let (permit, work_item) = select! {
             biased;
             Some(w) = receivers.permitless_rx.recv() => (None, Some(w)),
@@ -232,14 +277,13 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
             }
             else => (None, None),
         };
-
         let Some(work_item) = work_item else {
             error!("Processor queues closed unexpectedly");
             break;
         };
-
         if let Some(expiry) = work_item.expiry {
             if expiry < Instant::now() {
+                warn!(task = work_item.name, "Processor skipped expired work");
                 metrics::inc_counter_vec(
                     &metrics::ANCHOR_PROCESSOR_WORK_EVENTS_EXPIRED_COUNT,
                     &[work_item.name],
@@ -248,6 +292,7 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
             }
         }
 
+        // update metrics
         metrics::inc_gauge(&metrics::ANCHOR_PROCESSOR_WORKERS_ACTIVE_TOTAL);
         if permit.is_some() {
             metrics::inc_gauge(&metrics::ANCHOR_PROCESSOR_PERMIT_WORKERS_ACTIVE_TOTAL);
@@ -263,9 +308,11 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
                 &[work_item.name],
             ),
         };
+
         if let Some(state_modifier) = work_item.state_modifier {
             state_modifier(&mut state);
         }
+
         match work_item.func {
             WorkKind::Async(async_fn) => executor.spawn(
                 async move {
