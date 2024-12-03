@@ -119,7 +119,7 @@ impl Sender {
 pub struct Senders {
     /// Catch-all queue for tasks that are either very quick to run or behave well as async task in
     /// the Tokio runtime. Is launched immediately and does not require capacity as defined by
-    /// [`Config::max_worker`].
+    /// [`Config::max_workers`].
     pub permitless_tx: Sender,
     pub example2_tx: Sender,
     // todo add all the needed queues here
@@ -199,7 +199,7 @@ impl WorkItem {
     }
 
     /// Before starting the work, modify the [`ProcessorState`]. Useful for storing stuff to be used
-    /// by [immediate](new_immediate) [`WorkItem`]s.
+    /// by [immediate](WorkItem::new_immediate) `WorkItem`s.
     pub fn set_state_modifier(&mut self, state_modifier: Option<StateModifierFn>) {
         self.state_modifier = state_modifier;
     }
