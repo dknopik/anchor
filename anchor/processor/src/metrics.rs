@@ -20,6 +20,14 @@ pub static ANCHOR_PROCESSOR_WORK_EVENTS_STARTED_COUNT: LazyLock<Result<IntCounte
             &["type"],
         )
     });
+pub static ANCHOR_PROCESSOR_WORK_EVENTS_EXPIRED_COUNT: LazyLock<Result<IntCounterVec>> =
+    LazyLock::new(|| {
+        try_create_int_counter_vec(
+            "anchor_processor_work_events_expired_count",
+            "Count of work events which expired before processing",
+            &["type"],
+        )
+    });
 pub static ANCHOR_PROCESSOR_WORKER_TIME: LazyLock<Result<HistogramVec>> = LazyLock::new(|| {
     try_create_histogram_vec(
         "anchor_processor_worker_time",

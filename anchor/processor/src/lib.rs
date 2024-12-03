@@ -5,9 +5,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use task_executor::TaskExecutor;
-use tokio::sync::mpsc::error::{TryRecvError, TrySendError};
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tokio::select;
+use tokio::time::Instant;
 use tracing::{error, warn};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -35,6 +36,7 @@ impl Sender {
     ) -> Result<(), TrySendError<WorkItem>> {
         self.send_work_item(WorkItem {
             func: WorkKind::Async(future),
+            expiry: None,
             name,
         })
     }
@@ -46,6 +48,7 @@ impl Sender {
     ) -> Result<(), TrySendError<WorkItem>> {
         self.send_work_item(WorkItem {
             func: WorkKind::Blocking(func),
+            expiry: None,
             name,
         })
     }
@@ -57,11 +60,12 @@ impl Sender {
     ) -> Result<(), TrySendError<WorkItem>> {
         self.send_work_item(WorkItem {
             func: WorkKind::Immediate(func),
+            expiry: None,
             name,
         })
     }
 
-    fn send_work_item(&mut self, item: WorkItem) -> Result<(), TrySendError<WorkItem>> {
+    pub fn send_work_item(&mut self, item: WorkItem) -> Result<(), TrySendError<WorkItem>> {
         let name = item.name;
         let result = self.tx.try_send(item);
         if let Err(err) = &result {
@@ -109,6 +113,7 @@ enum WorkKind {
 
 pub struct WorkItem {
     func: WorkKind,
+    expiry: Option<Instant>,
     name: &'static str,
 }
 
@@ -116,6 +121,7 @@ impl WorkItem {
     pub fn new_async(name: &'static str, func: AsyncFn) -> Self {
         Self {
             name,
+            expiry: None,
             func: WorkKind::Async(func),
         }
     }
@@ -123,8 +129,18 @@ impl WorkItem {
     pub fn new_blocking(name: &'static str, func: BlockingFn) -> Self {
         Self {
             name,
+            expiry: None,
             func: WorkKind::Blocking(func),
         }
+    }
+
+    pub fn set_expiry(&mut self, expiry: Instant) {
+        self.expiry = Some(expiry);
+    }
+
+    pub fn with_expiry(mut self, expiry: Instant) -> Self {
+        self.set_expiry(expiry);
+        self
     }
 }
 
@@ -186,6 +202,16 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
             error!("Processor queues closed unexpectedly");
             break;
         };
+
+        if let Some(expiry) = work_item.expiry {
+            if expiry < Instant::now() {
+                metrics::inc_counter_vec(
+                    &metrics::ANCHOR_PROCESSOR_WORK_EVENTS_EXPIRED_COUNT,
+                    &[work_item.name],
+                );
+                continue;
+            }
+        }
 
         metrics::inc_gauge(&metrics::ANCHOR_PROCESSOR_WORKERS_ACTIVE_TOTAL);
         if permit.is_some() {
