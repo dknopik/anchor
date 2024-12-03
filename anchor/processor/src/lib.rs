@@ -1,13 +1,16 @@
 mod metrics;
 
+use qbft::{InMessage, InstanceHeight};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use task_executor::TaskExecutor;
-use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tokio::select;
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
 use tracing::{error, warn};
 
@@ -37,6 +40,7 @@ impl Sender {
         self.send_work_item(WorkItem {
             func: WorkKind::Async(future),
             expiry: None,
+            state_modifier: None,
             name,
         })
     }
@@ -49,6 +53,7 @@ impl Sender {
         self.send_work_item(WorkItem {
             func: WorkKind::Blocking(func),
             expiry: None,
+            state_modifier: None,
             name,
         })
     }
@@ -61,6 +66,7 @@ impl Sender {
         self.send_work_item(WorkItem {
             func: WorkKind::Immediate(func),
             expiry: None,
+            state_modifier: None,
             name,
         })
     }
@@ -103,7 +109,8 @@ struct Receivers {
 
 pub type AsyncFn = Pin<Box<dyn Future<Output = ()> + Send>>;
 pub type BlockingFn = Box<dyn FnOnce() + Send>;
-pub type ImmediateFn = Box<dyn FnOnce(DropOnFinish) + Send>;
+pub type ImmediateFn = Box<dyn FnOnce(&ProcessorState, DropOnFinish) + Send>;
+pub type StateModifierFn = Box<dyn FnOnce(&mut ProcessorState) + Send>;
 
 enum WorkKind {
     Async(AsyncFn),
@@ -114,6 +121,7 @@ enum WorkKind {
 pub struct WorkItem {
     func: WorkKind,
     expiry: Option<Instant>,
+    state_modifier: Option<StateModifierFn>,
     name: &'static str,
 }
 
@@ -122,6 +130,7 @@ impl WorkItem {
         Self {
             name,
             expiry: None,
+            state_modifier: None,
             func: WorkKind::Async(func),
         }
     }
@@ -130,16 +139,35 @@ impl WorkItem {
         Self {
             name,
             expiry: None,
+            state_modifier: None,
             func: WorkKind::Blocking(func),
         }
     }
 
-    pub fn set_expiry(&mut self, expiry: Instant) {
-        self.expiry = Some(expiry);
+    pub fn new_immediate(name: &'static str, func: ImmediateFn) -> Self {
+        Self {
+            name,
+            expiry: None,
+            state_modifier: None,
+            func: WorkKind::Immediate(func),
+        }
+    }
+
+    pub fn set_expiry(&mut self, expiry: Option<Instant>) {
+        self.expiry = expiry;
     }
 
     pub fn with_expiry(mut self, expiry: Instant) -> Self {
-        self.set_expiry(expiry);
+        self.expiry = Some(expiry);
+        self
+    }
+
+    pub fn set_state_modifier(&mut self, state_modifier: Option<StateModifierFn>) {
+        self.state_modifier = state_modifier;
+    }
+
+    pub fn with_state_modifier(mut self, state_modifier: StateModifierFn) -> Self {
+        self.state_modifier = Some(state_modifier);
         self
     }
 }
@@ -155,6 +183,12 @@ impl Drop for DropOnFinish {
             metrics::dec_gauge(&metrics::ANCHOR_PROCESSOR_PERMIT_WORKERS_ACTIVE_TOTAL);
         }
     }
+}
+
+#[derive(Default)]
+pub struct ProcessorState {
+    // placeholder, of course we also have to separate by validator and set data type
+    qbft_instances: HashMap<InstanceHeight, UnboundedSender<InMessage<()>>>,
 }
 
 pub async fn spawn(config: Config, executor: TaskExecutor) -> Senders {
@@ -177,6 +211,7 @@ pub async fn spawn(config: Config, executor: TaskExecutor) -> Senders {
 
 async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecutor) {
     let semaphore = Arc::new(Semaphore::new(config.max_workers));
+    let mut state = ProcessorState::default();
 
     loop {
         let _timer = metrics::start_timer(&metrics::ANCHOR_PROCESSOR_EVENT_HANDLING_SECONDS);
@@ -228,6 +263,9 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
                 &[work_item.name],
             ),
         };
+        if let Some(state_modifier) = work_item.state_modifier {
+            state_modifier(&mut state);
+        }
         match work_item.func {
             WorkKind::Async(async_fn) => executor.spawn(
                 async move {
@@ -245,7 +283,7 @@ async fn processor(config: Config, mut receivers: Receivers, executor: TaskExecu
                     work_item.name,
                 );
             }
-            WorkKind::Immediate(immediate_fn) => immediate_fn(drop_on_finish),
+            WorkKind::Immediate(immediate_fn) => immediate_fn(&state, drop_on_finish),
         }
     }
 }

@@ -11,3 +11,4 @@ task_executor = { workspace = true }
 serde = { workspace = true }
 num_cpus = { workspace = true }
 metrics = { workspace = true }
+qbft = { workspace = true }

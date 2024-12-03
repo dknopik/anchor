@@ -5815,6 +5815,7 @@ version = "0.1.0"
 dependencies = [
  "metrics 0.2.0 (git+https://github.com/agemanning/lighthouse?branch=modularize-vc)",
  "num_cpus",
+ "qbft",
  "serde",
  "task_executor 0.1.0 (git+https://github.com/sigp/lighthouse?branch=unstable)",
  "tokio",
