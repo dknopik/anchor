@@ -12,6 +12,7 @@ mod metrics;
 use qbft::{InMessage, InstanceHeight};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -47,13 +48,13 @@ pub struct Sender {
 
 impl Sender {
     /// Convenience method creating an async [`WorkItem`] and sending it.
-    pub fn send_async(
+    pub fn send_async<F: Future<Output = ()> + Send + 'static>(
         &mut self,
-        future: AsyncFn,
+        future: F,
         name: &'static str,
     ) -> Result<(), TrySendError<WorkItem>> {
         self.send_work_item(WorkItem {
-            func: WorkKind::Async(future),
+            func: WorkKind::Async(Box::pin(future)),
             expiry: None,
             state_modifier: None,
             name,
@@ -61,13 +62,13 @@ impl Sender {
     }
 
     /// Convenience method creating a blocking [`WorkItem`] and sending it.
-    pub fn send_blocking(
+    pub fn send_blocking<F: FnOnce() + Send + 'static>(
         &mut self,
-        func: BlockingFn,
+        func: F,
         name: &'static str,
     ) -> Result<(), TrySendError<WorkItem>> {
         self.send_work_item(WorkItem {
-            func: WorkKind::Blocking(func),
+            func: WorkKind::Blocking(Box::new(func)),
             expiry: None,
             state_modifier: None,
             name,
@@ -75,13 +76,13 @@ impl Sender {
     }
 
     /// Convenience method creating an immediate [`WorkItem`] and sending it.
-    pub fn send_immediate(
+    pub fn send_immediate<F: FnOnce(&ProcessorState, DropOnFinish) + Send + 'static>(
         &mut self,
-        func: ImmediateFn,
+        func: F,
         name: &'static str,
     ) -> Result<(), TrySendError<WorkItem>> {
         self.send_work_item(WorkItem {
-            func: WorkKind::Immediate(func),
+            func: WorkKind::Immediate(Box::new(func)),
             expiry: None,
             state_modifier: None,
             name,
@@ -136,19 +137,38 @@ pub type BlockingFn = Box<dyn FnOnce() + Send>;
 pub type ImmediateFn = Box<dyn FnOnce(&ProcessorState, DropOnFinish) + Send>;
 pub type StateModifierFn = Box<dyn FnOnce(&mut ProcessorState) + Send>;
 
-#[derive(Debug)]
 enum WorkKind {
     Async(AsyncFn),
     Blocking(BlockingFn),
     Immediate(ImmediateFn),
 }
 
-#[derive(Debug)]
+impl Debug for WorkKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WorkKind::Async(_) => f.write_str("Async"),
+            WorkKind::Blocking(_) => f.write_str("Blocking"),
+            WorkKind::Immediate(_) => f.write_str("Immediate"),
+        }
+    }
+}
+
 pub struct WorkItem {
     func: WorkKind,
     expiry: Option<Instant>,
     state_modifier: Option<StateModifierFn>,
     name: &'static str,
+}
+
+impl Debug for WorkItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkItem")
+            .field("func", &self.func)
+            .field("expiry", &self.expiry)
+            .field("state_modifier", &self.state_modifier.is_some())
+            .field("name", &self.name)
+            .finish()
+    }
 }
 
 impl WorkItem {
@@ -234,7 +254,7 @@ pub struct ProcessorState {
 }
 
 /// Create a new processor and spawn it with the given executor. Returns the queue senders.
-pub async fn spawn(config: Config, executor: TaskExecutor) -> Senders {
+pub fn spawn(config: Config, executor: TaskExecutor) -> Senders {
     // todo macro? just specifying name and capacity?
     let (permitless_tx, permitless_rx) = mpsc::channel(1000);
     let (example2_tx, example2_rx) = mpsc::channel(1000);

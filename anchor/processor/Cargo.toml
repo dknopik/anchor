@@ -12,3 +12,7 @@ serde = { workspace = true }
 num_cpus = { workspace = true }
 metrics = { workspace = true }
 qbft = { workspace = true }
+
+[dev-dependencies]
+async-channel = { workspace = true }
+futures = { workspace = true }
