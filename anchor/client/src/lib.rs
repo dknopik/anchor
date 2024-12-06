@@ -43,7 +43,7 @@ impl Client {
         );
 
         // Start the processor
-        let processor_senders = processor::spawn(config.processor, executor.clone());
+        let _processor_senders = processor::spawn(config.processor, executor.clone());
 
         // Optionally start the metrics server.
         let _http_metrics_shared_state = if config.http_metrics.enabled {
