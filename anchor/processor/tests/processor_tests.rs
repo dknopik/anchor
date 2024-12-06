@@ -13,9 +13,7 @@ async fn test_max_workers() -> Result<(), Box<dyn Error>> {
     let (shutdown_tx, _) = futures::channel::mpsc::channel(1);
     let executor = TaskExecutor::new(handle, exit, shutdown_tx);
 
-    let config = processor::Config {
-        max_workers: 3,
-    };
+    let config = processor::Config { max_workers: 3 };
 
     let mut sender_queues = processor::spawn(config, executor);
 
@@ -26,14 +24,21 @@ async fn test_max_workers() -> Result<(), Box<dyn Error>> {
     for _ in 0..3 {
         let start_sync = start_sync.clone();
         let continue_notify = continue_notify.clone();
-        sender_queues.example2_tx.send_async(async move {
-            start_sync.wait().await;
-            continue_notify.notified().await;
-        }, "test_task1")?;
+        sender_queues.example2_tx.send_async(
+            async move {
+                start_sync.wait().await;
+                continue_notify.notified().await;
+            },
+            "test_task1",
+        )?;
 
         // throw in some permitless tasks
-        sender_queues.permitless_tx.send_blocking(|| {}, "test_task2")?;
-        sender_queues.permitless_tx.send_immediate(|_, _| {}, "test_task3")?;
+        sender_queues
+            .permitless_tx
+            .send_blocking(|| {}, "test_task2")?;
+        sender_queues
+            .permitless_tx
+            .send_immediate(|_, _| {}, "test_task3")?;
     }
 
     // wait until every task has been spawned
@@ -45,15 +50,21 @@ async fn test_max_workers() -> Result<(), Box<dyn Error>> {
     let permitless_sync = Arc::new(Barrier::new(2));
     let passed_permitless_sync = permitless_sync.clone();
     // now, we should be able to spawn only via the "permitless" queue
-    sender_queues.permitless_tx.send_async(async move {
-        passed_permitless_sync.wait().await;
-    }, "test_task4")?;
+    sender_queues.permitless_tx.send_async(
+        async move {
+            passed_permitless_sync.wait().await;
+        },
+        "test_task4",
+    )?;
 
     let (did_run_tx, mut did_run_rx) = oneshot::channel();
     // but other queues should only run after we freed up space:
-    sender_queues.example2_tx.send_async(async move {
-        let _ = did_run_tx.send(());
-    }, "test_task5")?;
+    sender_queues.example2_tx.send_async(
+        async move {
+            let _ = did_run_tx.send(());
+        },
+        "test_task5",
+    )?;
 
     // see if the permitless one ran
     select! {
