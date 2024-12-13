@@ -83,7 +83,9 @@ impl Client {
             "Starting the Anchor client"
         );
 
-        let spec = Eth2Config::mainnet().spec;
+        let mut spec = Eth2Config::mainnet().spec;
+        // dirty hack to be able to connect to local kurtosis devnet
+        Arc::get_mut(&mut spec).unwrap().genesis_fork_version = [16, 0, 0, 56];
 
         // Start the processor
         let processor_senders = processor::spawn(config.processor, executor.clone());
@@ -286,7 +288,8 @@ impl Client {
             .slot_clock(slot_clock.clone())
             .validator_store(validator_store.clone())
             .beacon_nodes(beacon_nodes.clone())
-            .executor(executor.clone());
+            .executor(executor.clone())
+            .chain_spec(spec.clone());
         //.graffiti(config.graffiti)
         //.graffiti_file(config.graffiti_file.clone());
 
