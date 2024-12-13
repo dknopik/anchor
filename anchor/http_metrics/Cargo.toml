@@ -13,4 +13,4 @@ tower-http = { workspace = true }
 tracing = { workspace = true }
 validator_metrics = { workspace = true }
 # Group dependencies
-warp_utils = { git = "https://github.com/agemanning/lighthouse", branch = "modularize-vc" }
+#warp_utils =  { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
