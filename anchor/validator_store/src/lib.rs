@@ -1,5 +1,8 @@
 use dashmap::DashMap;
+use signature_collector::{CollectionError, SignatureCollectorManager, SignatureRequest};
+use ssv_types::{Cluster, OperatorId};
 use std::marker::PhantomData;
+use std::sync::Arc;
 use tracing::{error, warn};
 use types::attestation::Attestation;
 use types::beacon_block::BeaconBlock;
@@ -19,31 +22,80 @@ use types::validator_registration_data::{
     SignedValidatorRegistrationData, ValidatorRegistrationData,
 };
 use types::voluntary_exit::VoluntaryExit;
-use types::{Address, EthSpec, PublicKeyBytes, Signature};
+use types::{
+    Address, ChainSpec, Domain, EthSpec, Hash256, PublicKeyBytes, SecretKey, Signature, SignedRoot,
+};
 use validator_store::{
     DoppelgangerStatus, Error as ValidatorStoreError, ProposalData, ValidatorStore,
 };
 
+struct InitializedCluster {
+    cluster: Cluster,
+    decrypted_key_share: SecretKey,
+}
+
 pub struct AnchorValidatorStore<E> {
-    validators: DashMap<PublicKeyBytes, ssv_types::Cluster>,
-    _processor: processor::Senders,
+    clusters: DashMap<PublicKeyBytes, InitializedCluster>,
+    signature_collector: Arc<SignatureCollectorManager>,
+    spec: Arc<ChainSpec>,
+    genesis_validators_root: Hash256,
+    operator_id: OperatorId,
     _phantom: PhantomData<E>,
 }
 
 impl<E> AnchorValidatorStore<E> {
-    pub fn new(processor: processor::Senders) -> AnchorValidatorStore<E> {
+    pub fn new(
+        _processor: processor::Senders,
+        signature_collector: Arc<SignatureCollectorManager>,
+        spec: Arc<ChainSpec>,
+        genesis_validators_root: Hash256,
+        operator_id: OperatorId,
+    ) -> AnchorValidatorStore<E> {
         Self {
-            validators: DashMap::new(),
-            _processor: processor,
+            clusters: DashMap::new(),
+            signature_collector,
+            spec,
+            genesis_validators_root,
+            operator_id,
             _phantom: PhantomData,
         }
+    }
+
+    async fn collect_signature(
+        &self,
+        validator_pubkey: PublicKeyBytes,
+        signing_root: Hash256,
+    ) -> Result<Signature, Error> {
+        let Some(cluster) = self.clusters.get(&validator_pubkey) else {
+            return Err(Error::UnknownPubkey(validator_pubkey));
+        };
+
+        let collector = self.signature_collector.sign_and_collect(
+            SignatureRequest {
+                cluster_id: cluster.cluster.cluster_id,
+                signing_root,
+                threshold: cluster.cluster.cluster_members.len() as u64 - cluster.cluster.faulty,
+            },
+            self.operator_id,
+            cluster.decrypted_key_share.clone(),
+        );
+
+        // free lock before invoking future
+        drop(cluster);
+        Ok((*collector.await.map_err(SpecificError::from)?).clone())
     }
 }
 
 #[derive(Debug)]
 pub enum SpecificError {
     ExitsUnsupported,
-    SigningTimeout,
+    SignatureCollectionFailed(CollectionError),
+}
+
+impl From<CollectionError> for SpecificError {
+    fn from(err: CollectionError) -> SpecificError {
+        SpecificError::SignatureCollectionFailed(err)
+    }
 }
 
 pub type Error = ValidatorStoreError<SpecificError>;
@@ -52,9 +104,9 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
     type Error = SpecificError;
 
     fn validator_index(&self, pubkey: &PublicKeyBytes) -> Option<u64> {
-        self.validators
+        self.clusters
             .get(pubkey)
-            .map(|v| v.validator_metadata.validator_index.0 as u64)
+            .map(|v| v.cluster.validator_metadata.validator_index.0 as u64)
     }
 
     fn voting_pubkeys<I, F>(&self, _filter_func: F) -> I
@@ -63,27 +115,28 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         F: Fn(DoppelgangerStatus) -> Option<PublicKeyBytes>,
     {
         // we don't care about doppelgangers
-        self.validators.iter().map(|v| *v.key()).collect()
+        self.clusters.iter().map(|v| *v.key()).collect()
     }
 
     fn doppelganger_protection_allows_signing(&self, _validator_pubkey: PublicKeyBytes) -> bool {
+        // we don't care about doppelgangers
         true
     }
 
     fn num_voting_validators(&self) -> usize {
-        self.validators.len()
+        self.clusters.len()
     }
 
     fn graffiti(&self, validator_pubkey: &PublicKeyBytes) -> Option<Graffiti> {
-        self.validators
+        self.clusters
             .get(validator_pubkey)
-            .map(|v| v.validator_metadata.graffiti)
+            .map(|v| v.cluster.validator_metadata.graffiti)
     }
 
     fn get_fee_recipient(&self, validator_pubkey: &PublicKeyBytes) -> Option<Address> {
-        self.validators
+        self.clusters
             .get(validator_pubkey)
-            .map(|v| v.validator_metadata.fee_recipient)
+            .map(|v| v.cluster.validator_metadata.fee_recipient)
     }
 
     fn determine_builder_boost_factor(&self, _validator_pubkey: &PublicKeyBytes) -> Option<u64> {
@@ -92,24 +145,31 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
 
     async fn randao_reveal(
         &self,
-        _validator_pubkey: PublicKeyBytes,
-        _signing_epoch: Epoch,
+        validator_pubkey: PublicKeyBytes,
+        signing_epoch: Epoch,
     ) -> Result<Signature, Error> {
-        todo!()
+        let domain = self.spec.get_domain(
+            signing_epoch,
+            Domain::Randao,
+            &self.spec.fork_at_epoch(signing_epoch),
+            self.genesis_validators_root,
+        );
+        let signing_root = signing_epoch.signing_root(domain);
+        self.collect_signature(validator_pubkey, signing_root).await
     }
 
     fn set_validator_index(&self, validator_pubkey: &PublicKeyBytes, index: u64) {
         // we actually have the index already. we use the opportunity to do a sanity check
-        match self.validators.get(validator_pubkey) {
+        match self.clusters.get(validator_pubkey) {
             None => warn!(
                 validator = validator_pubkey.as_hex_string(),
                 "Trying to set index for unknown validator"
             ),
             Some(v) => {
-                if v.validator_metadata.validator_index.0 as u64 != index {
+                if v.cluster.validator_metadata.validator_index.0 as u64 != index {
                     error!(
                         validator = validator_pubkey.as_hex_string(),
-                        expected = v.validator_metadata.validator_index.0,
+                        expected = v.cluster.validator_metadata.validator_index.0,
                         actual = index,
                         "Mismatched validator index",
                     )
@@ -205,9 +265,9 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
     }
 
     fn proposal_data(&self, pubkey: &PublicKeyBytes) -> Option<ProposalData> {
-        self.validators.get(pubkey).map(|v| ProposalData {
-            validator_index: Some(v.validator_metadata.validator_index.0 as u64),
-            fee_recipient: Some(v.validator_metadata.fee_recipient),
+        self.clusters.get(pubkey).map(|v| ProposalData {
+            validator_index: Some(v.cluster.validator_metadata.validator_index.0 as u64),
+            fee_recipient: Some(v.cluster.validator_metadata.fee_recipient),
             gas_limit: 30_000_000,    // TODO support scalooors
             builder_proposals: false, // TODO support MEVooors
         })

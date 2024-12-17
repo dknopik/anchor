@@ -15,7 +15,9 @@ use eth2_config::Eth2Config;
 use network::Network;
 use parking_lot::RwLock;
 use sensitive_url::SensitiveUrl;
+use signature_collector::SignatureCollectorManager;
 use slot_clock::{SlotClock, SystemTimeSlotClock};
+use ssv_types::OperatorId;
 use std::fs::File;
 use std::io::Read;
 use std::net::SocketAddr;
@@ -89,6 +91,10 @@ impl Client {
 
         // Start the processor
         let processor_senders = processor::spawn(config.processor, executor.clone());
+
+        // Create the processor-adjacent managers
+        let signature_collector =
+            Arc::new(SignatureCollectorManager::new(processor_senders.clone()));
 
         // Optionally start the metrics server.
         let http_metrics_shared_state = if config.http_metrics.enabled {
@@ -243,7 +249,7 @@ impl Client {
         );
 
         // Perform some potentially long-running initialization tasks.
-        let (genesis_time, _genesis_validators_root) = tokio::select! {
+        let (genesis_time, genesis_validators_root) = tokio::select! {
             tuple = init_from_beacon_node(&beacon_nodes, &proposer_nodes) => tuple?,
             () = executor.exit() => return Err("Shutting down".to_string())
         };
@@ -263,7 +269,13 @@ impl Client {
         let proposer_nodes = Arc::new(proposer_nodes);
         start_fallback_updater_service(executor.clone(), proposer_nodes.clone())?;
 
-        let validator_store = Arc::new(AnchorValidatorStore::new(processor_senders));
+        let validator_store = Arc::new(AnchorValidatorStore::new(
+            processor_senders,
+            signature_collector,
+            spec.clone(),
+            genesis_validators_root,
+            OperatorId(123),
+        ));
 
         let duties_service = Arc::new(
             DutiesServiceBuilder::new()
