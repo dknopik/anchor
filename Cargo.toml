@@ -10,6 +10,7 @@ members = [
     "anchor/network",
     "anchor/processor",
     "anchor/qbft",
+    "anchor/signature_collector",
 ]
 resolver = "2"
 
@@ -25,6 +26,7 @@ network = { path = "anchor/network" }
 version = { path = "anchor/common/version" }
 processor = { path = "anchor/processor" }
 ssv_types = { path = "anchor/common/ssv_types" }
+signature_collector = { path = "anchor/signature_collector" }
 lighthouse_network = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
 task_executor = { git = "https://github.com/sigp/lighthouse", branch = "unstable", default-features = false, features = [ "tracing", ] }
 metrics = { git = "https://github.com/agemanning/lighthouse", branch = "modularize-vc" }
@@ -37,6 +39,7 @@ derive_more = { version = "1.0.0", features = ["full"] }
 async-channel = "1.9"
 axum = "0.7.7"
 clap = { version = "4.5.15", features = ["derive", "wrap_help"] }
+dashmap = "6.1.0"
 discv5 = "0.8.0"
 dirs = "5.0.1"
 either = "1.13.0"

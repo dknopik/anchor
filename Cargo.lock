@@ -1637,6 +1637,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04d2cd9c18b9f454ed67da600630b021a8a80bf33f8c95896ab33aaf1c26b728"
 
 [[package]]
+name = "dashmap"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core 0.9.10",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5997,7 +6011,6 @@ dependencies = [
  "futures",
  "metrics 0.2.0 (git+https://github.com/agemanning/lighthouse?branch=modularize-vc)",
  "num_cpus",
- "qbft",
  "serde",
  "task_executor 0.1.0 (git+https://github.com/sigp/lighthouse?branch=unstable)",
  "tokio",
@@ -7222,6 +7235,18 @@ checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "digest 0.10.7",
  "rand_core",
+]
+
+[[package]]
+name = "signature_collector"
+version = "0.1.0"
+dependencies = [
+ "dashmap",
+ "processor",
+ "ssv_types",
+ "tokio",
+ "tracing",
+ "types 0.2.1 (git+https://github.com/sigp/lighthouse?branch=unstable)",
 ]
 
 [[package]]
