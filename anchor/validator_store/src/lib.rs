@@ -1,4 +1,5 @@
 use dashmap::DashMap;
+use safe_arith::{ArithError, SafeArith};
 use signature_collector::{CollectionError, SignatureCollectorManager, SignatureRequest};
 use ssv_types::{Cluster, OperatorId};
 use std::marker::PhantomData;
@@ -24,6 +25,7 @@ use types::validator_registration_data::{
 use types::voluntary_exit::VoluntaryExit;
 use types::{
     Address, ChainSpec, Domain, EthSpec, Hash256, PublicKeyBytes, SecretKey, Signature, SignedRoot,
+    SyncAggregatorSelectionData,
 };
 use validator_store::{
     DoppelgangerStatus, Error as ValidatorStoreError, ProposalData, ValidatorStore,
@@ -61,6 +63,15 @@ impl<E> AnchorValidatorStore<E> {
         }
     }
 
+    fn get_domain(&self, epoch: Epoch, domain: Domain) -> Hash256 {
+        self.spec.get_domain(
+            epoch,
+            domain,
+            &self.spec.fork_at_epoch(epoch),
+            self.genesis_validators_root,
+        )
+    }
+
     async fn collect_signature(
         &self,
         validator_pubkey: PublicKeyBytes,
@@ -74,7 +85,12 @@ impl<E> AnchorValidatorStore<E> {
             SignatureRequest {
                 cluster_id: cluster.cluster.cluster_id,
                 signing_root,
-                threshold: cluster.cluster.cluster_members.len() as u64 - cluster.cluster.faulty,
+                threshold: cluster
+                    .cluster
+                    .faulty
+                    .safe_mul(2)
+                    .and_then(|x| x.safe_add(1))
+                    .map_err(SpecificError::from)?,
             },
             self.operator_id,
             cluster.decrypted_key_share.clone(),
@@ -90,11 +106,18 @@ impl<E> AnchorValidatorStore<E> {
 pub enum SpecificError {
     ExitsUnsupported,
     SignatureCollectionFailed(CollectionError),
+    ArithError(ArithError),
 }
 
 impl From<CollectionError> for SpecificError {
     fn from(err: CollectionError) -> SpecificError {
         SpecificError::SignatureCollectionFailed(err)
+    }
+}
+
+impl From<ArithError> for SpecificError {
+    fn from(err: ArithError) -> SpecificError {
+        SpecificError::ArithError(err)
     }
 }
 
@@ -148,13 +171,8 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         validator_pubkey: PublicKeyBytes,
         signing_epoch: Epoch,
     ) -> Result<Signature, Error> {
-        let domain = self.spec.get_domain(
-            signing_epoch,
-            Domain::Randao,
-            &self.spec.fork_at_epoch(signing_epoch),
-            self.genesis_validators_root,
-        );
-        let signing_root = signing_epoch.signing_root(domain);
+        let domain_hash = self.get_domain(signing_epoch, Domain::Randao);
+        let signing_root = signing_epoch.signing_root(domain_hash);
         self.collect_signature(validator_pubkey, signing_root).await
     }
 
@@ -181,9 +199,25 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
     async fn sign_block<Payload: AbstractExecPayload<E>>(
         &self,
         _validator_pubkey: PublicKeyBytes,
-        _block: BeaconBlock<E, Payload>,
-        _current_slot: Slot,
+        block: BeaconBlock<E, Payload>,
+        current_slot: Slot,
     ) -> Result<SignedBeaconBlock<E, Payload>, Error> {
+        // Make sure the block slot is not higher than the current slot to avoid potential attacks.
+        if block.slot() > current_slot {
+            warn!(
+                "block_slot" = block.slot().as_u64(),
+                "current_slot" = current_slot.as_u64(),
+                "Not signing block with slot greater than current slot",
+            );
+            return Err(Error::GreaterThanCurrentSlot {
+                slot: block.slot(),
+                current_slot,
+            });
+        }
+
+        // todo slashing protection
+
+        // first, we have to get to consensus
         todo!()
     }
 
@@ -208,9 +242,19 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
 
     async fn sign_validator_registration_data(
         &self,
-        _validator_registration_data: ValidatorRegistrationData,
+        validator_registration_data: ValidatorRegistrationData,
     ) -> Result<SignedValidatorRegistrationData, Error> {
-        todo!()
+        let domain_hash = self.spec.get_builder_domain();
+        let signing_root = validator_registration_data.signing_root(domain_hash);
+
+        let signature = self
+            .collect_signature(validator_registration_data.pubkey, signing_root)
+            .await?;
+
+        Ok(SignedValidatorRegistrationData {
+            message: validator_registration_data,
+            signature,
+        })
     }
 
     async fn produce_signed_aggregate_and_proof(
@@ -225,25 +269,41 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
 
     async fn produce_selection_proof(
         &self,
-        _validator_pubkey: PublicKeyBytes,
-        _slot: Slot,
+        validator_pubkey: PublicKeyBytes,
+        slot: Slot,
     ) -> Result<SelectionProof, Error> {
-        todo!()
+        let epoch = slot.epoch(E::slots_per_epoch());
+        let domain_hash = self.get_domain(epoch, Domain::SelectionProof);
+        let signing_root = slot.signing_root(domain_hash);
+
+        self.collect_signature(validator_pubkey, signing_root)
+            .await
+            .map(SelectionProof::from)
     }
 
     async fn produce_sync_selection_proof(
         &self,
-        _validator_pubkey: &PublicKeyBytes,
-        _slot: Slot,
-        _subnet_id: SyncSubnetId,
+        validator_pubkey: &PublicKeyBytes,
+        slot: Slot,
+        subnet_id: SyncSubnetId,
     ) -> Result<SyncSelectionProof, Error> {
-        todo!()
+        let epoch = slot.epoch(E::slots_per_epoch());
+        let domain_hash = self.get_domain(epoch, Domain::SyncCommitteeSelectionProof);
+        let signing_root = SyncAggregatorSelectionData {
+            slot,
+            subcommittee_index: subnet_id.into(),
+        }
+        .signing_root(domain_hash);
+
+        self.collect_signature(*validator_pubkey, signing_root)
+            .await
+            .map(SyncSelectionProof::from)
     }
 
     async fn produce_sync_committee_signature(
         &self,
         _slot: Slot,
-        _beacon_block_root: types::Hash256,
+        _beacon_block_root: Hash256,
         _validator_index: u64,
         _validator_pubkey: &PublicKeyBytes,
     ) -> Result<SyncCommitteeMessage, Error> {

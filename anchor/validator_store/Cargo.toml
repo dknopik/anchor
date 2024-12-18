@@ -8,6 +8,7 @@ rust-version = "1.81.0"
 [dependencies]
 dashmap = "6.1.0"
 processor = { workspace = true }
+safe_arith = { workspace = true }
 signature_collector = { workspace = true }
 ssv_types = { workspace = true }
 tracing = { workspace = true }

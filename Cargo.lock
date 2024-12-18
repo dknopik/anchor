@@ -177,6 +177,7 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "processor",
+ "safe_arith",
  "signature_collector",
  "ssv_types",
  "tracing",

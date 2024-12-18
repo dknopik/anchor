@@ -42,6 +42,7 @@ eth2_config = { git = "https://github.com/dknopik/lighthouse", branch = "modular
 eth2 = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 validator_store = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 beacon_node_fallback = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
+safe_arith = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 derive_more = { version = "1.0.0", features = ["full"] }
 async-channel = "1.9"
 axum = "0.7.7"
