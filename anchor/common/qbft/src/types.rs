@@ -4,6 +4,7 @@ use derive_more::{Add, Deref, From};
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;
+use crate::Data;
 
 /// Generic LeaderFunction trait to allow for future implementations of the QBFT module
 pub trait LeaderFunction {
@@ -50,19 +51,12 @@ impl Round {
 
 /// The operator that is participating in the consensus instance.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, From, Deref)]
-pub struct OperatorId(usize);
+pub struct OperatorId(pub usize);
 
 /// The instance height behaves like an "ID" for the QBFT instance. It is used to uniquely identify
 /// different instances, that have the same operator id.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, From, Deref)]
 pub struct InstanceHeight(usize);
-
-impl Deref for InstanceHeight {
-    type Target = usize;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
@@ -82,31 +76,17 @@ pub enum InstanceState {
 /// Generic Data trait to allow for future implementations of the QBFT module
 // Messages that can be received from the message_in channel
 #[derive(Debug, Clone)]
-pub enum InMessage<D: Debug + Clone + Eq + Hash> {
+pub enum Message<D: Data> {
     /// A PROPOSE message to be sent on the network.
     Propose(OperatorId, ConsensusData<D>),
     /// A PREPARE message to be sent on the network.
-    Prepare(OperatorId, ConsensusData<D>),
+    Prepare(OperatorId, ConsensusData<D::Hash>),
     /// A commit message to be sent on the network.
-    Commit(OperatorId, ConsensusData<D>),
+    Commit(OperatorId, ConsensusData<D::Hash>),
     /// Round change message received from network
-    RoundChange(OperatorId, Round, Option<ConsensusData<D>>),
+    RoundChange(OperatorId, Round, Option<ConsensusData<D::Hash>>),
 }
 
-/// Messages that may be sent to the message_out channel from the instance to the client processor
-#[derive(Debug, Clone)]
-pub enum OutMessage<D: Debug + Clone + Eq + Hash> {
-    /// A PROPOSE message to be sent on the network.
-    Propose(ConsensusData<D>),
-    /// A PREPARE message to be sent on the network.
-    Prepare(ConsensusData<D>),
-    /// A commit message to be sent on the network.
-    Commit(ConsensusData<D>),
-    /// The round has ended, send this message to the network to inform all participants.
-    RoundChange(Round, Option<ConsensusData<D>>),
-    /// The consensus instance has completed.
-    Completed(Completed<D>),
-}
 /// Type definitions for the allowable messages
 /// This holds the consensus data for a given round.
 #[derive(Debug, Clone)]
