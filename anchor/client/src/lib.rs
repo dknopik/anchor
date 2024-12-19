@@ -234,14 +234,14 @@ impl Client {
         // Initialize the number of connected, avaliable beacon nodes to 0.
         set_gauge(&validator_metrics::AVAILABLE_BEACON_NODES_COUNT, 0);
 
-        let mut beacon_nodes: BeaconNodeFallback<_, E> = BeaconNodeFallback::new(
+        let mut beacon_nodes: BeaconNodeFallback<_> = BeaconNodeFallback::new(
             candidates,
             beacon_node_fallback::Config::default(), // TODO make configurable
             vec![ApiTopic::Subscriptions],           // TODO make configurable
             spec.clone(),
         );
 
-        let mut proposer_nodes: BeaconNodeFallback<_, E> = BeaconNodeFallback::new(
+        let mut proposer_nodes: BeaconNodeFallback<_> = BeaconNodeFallback::new(
             proposer_candidates,
             beacon_node_fallback::Config::default(), // TODO make configurable
             vec![ApiTopic::Subscriptions],           // TODO make configurable
@@ -250,7 +250,7 @@ impl Client {
 
         // Perform some potentially long-running initialization tasks.
         let (genesis_time, genesis_validators_root) = tokio::select! {
-            tuple = init_from_beacon_node(&beacon_nodes, &proposer_nodes) => tuple?,
+            tuple = init_from_beacon_node::<E>(&beacon_nodes, &proposer_nodes) => tuple?,
             () = executor.exit() => return Err("Shutting down".to_string())
         };
 
@@ -264,10 +264,10 @@ impl Client {
         proposer_nodes.set_slot_clock(slot_clock.clone());
 
         let beacon_nodes = Arc::new(beacon_nodes);
-        start_fallback_updater_service(executor.clone(), beacon_nodes.clone())?;
+        start_fallback_updater_service::<_, E>(executor.clone(), beacon_nodes.clone())?;
 
         let proposer_nodes = Arc::new(proposer_nodes);
-        start_fallback_updater_service(executor.clone(), proposer_nodes.clone())?;
+        start_fallback_updater_service::<_, E>(executor.clone(), proposer_nodes.clone())?;
 
         let validator_store = Arc::new(AnchorValidatorStore::new(
             processor_senders,
@@ -286,7 +286,7 @@ impl Client {
                 .executor(executor.clone())
                 //.enable_high_validator_count_metrics(config.enable_high_validator_count_metrics)
                 .distributed(true)
-                .build()?,
+                .build::<E>()?,
         );
 
         // Update the metrics server.
@@ -350,7 +350,7 @@ impl Client {
         duties_service::start_update_service(duties_service.clone(), block_service_tx);
 
         block_service
-            .start_update_service(block_service_rx)
+            .start_update_service::<E>(block_service_rx)
             .map_err(|e| format!("Unable to start block service: {}", e))?;
 
         attestation_service
@@ -362,7 +362,7 @@ impl Client {
             .map_err(|e| format!("Unable to start sync committee service: {}", e))?;
 
         preparation_service
-            .start_update_service(&spec)
+            .start_update_service::<E>(&spec)
             .map_err(|e| format!("Unable to start preparation service: {}", e))?;
 
         Ok(())
@@ -370,14 +370,14 @@ impl Client {
 }
 
 async fn init_from_beacon_node<E: EthSpec>(
-    beacon_nodes: &BeaconNodeFallback<SystemTimeSlotClock, E>,
-    proposer_nodes: &BeaconNodeFallback<SystemTimeSlotClock, E>,
+    beacon_nodes: &BeaconNodeFallback<SystemTimeSlotClock>,
+    proposer_nodes: &BeaconNodeFallback<SystemTimeSlotClock>,
 ) -> Result<(u64, Hash256), String> {
     const RETRY_DELAY: Duration = Duration::from_secs(2);
 
     loop {
-        beacon_nodes.update_all_candidates().await;
-        proposer_nodes.update_all_candidates().await;
+        beacon_nodes.update_all_candidates::<E>().await;
+        proposer_nodes.update_all_candidates::<E>().await;
 
         let num_available = beacon_nodes.num_available().await;
         let num_total = beacon_nodes.num_total().await;
@@ -454,8 +454,8 @@ async fn init_from_beacon_node<E: EthSpec>(
     Ok((genesis.genesis_time, genesis.genesis_validators_root))
 }
 
-async fn wait_for_genesis<E: EthSpec>(
-    beacon_nodes: &BeaconNodeFallback<SystemTimeSlotClock, E>,
+async fn wait_for_genesis(
+    beacon_nodes: &BeaconNodeFallback<SystemTimeSlotClock>,
     genesis_time: u64,
 ) -> Result<(), String> {
     let now = SystemTime::now()
@@ -497,8 +497,8 @@ async fn wait_for_genesis<E: EthSpec>(
 
 /// Request the version from the node, looping back and trying again on failure. Exit once the node
 /// has been contacted.
-async fn poll_whilst_waiting_for_genesis<E: EthSpec>(
-    beacon_nodes: &BeaconNodeFallback<SystemTimeSlotClock, E>,
+async fn poll_whilst_waiting_for_genesis(
+    beacon_nodes: &BeaconNodeFallback<SystemTimeSlotClock>,
     genesis_time: Duration,
 ) -> Result<(), String> {
     loop {

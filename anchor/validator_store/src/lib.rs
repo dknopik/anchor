@@ -2,7 +2,6 @@ use dashmap::DashMap;
 use safe_arith::{ArithError, SafeArith};
 use signature_collector::{CollectionError, SignatureCollectorManager, SignatureRequest};
 use ssv_types::{Cluster, OperatorId};
-use std::marker::PhantomData;
 use std::sync::Arc;
 use tracing::{error, warn};
 use types::attestation::Attestation;
@@ -36,30 +35,28 @@ struct InitializedCluster {
     decrypted_key_share: SecretKey,
 }
 
-pub struct AnchorValidatorStore<E> {
+pub struct AnchorValidatorStore {
     clusters: DashMap<PublicKeyBytes, InitializedCluster>,
     signature_collector: Arc<SignatureCollectorManager>,
     spec: Arc<ChainSpec>,
     genesis_validators_root: Hash256,
     operator_id: OperatorId,
-    _phantom: PhantomData<E>,
 }
 
-impl<E> AnchorValidatorStore<E> {
+impl AnchorValidatorStore {
     pub fn new(
         _processor: processor::Senders,
         signature_collector: Arc<SignatureCollectorManager>,
         spec: Arc<ChainSpec>,
         genesis_validators_root: Hash256,
         operator_id: OperatorId,
-    ) -> AnchorValidatorStore<E> {
+    ) -> AnchorValidatorStore {
         Self {
             clusters: DashMap::new(),
             signature_collector,
             spec,
             genesis_validators_root,
             operator_id,
-            _phantom: PhantomData,
         }
     }
 
@@ -123,7 +120,7 @@ impl From<ArithError> for SpecificError {
 
 pub type Error = ValidatorStoreError<SpecificError>;
 
-impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
+impl ValidatorStore for AnchorValidatorStore {
     type Error = SpecificError;
 
     fn validator_index(&self, pubkey: &PublicKeyBytes) -> Option<u64> {
@@ -166,7 +163,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         Some(1)
     }
 
-    async fn randao_reveal(
+    async fn randao_reveal<E: EthSpec>(
         &self,
         validator_pubkey: PublicKeyBytes,
         signing_epoch: Epoch,
@@ -196,7 +193,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         }
     }
 
-    async fn sign_block<Payload: AbstractExecPayload<E>>(
+    async fn sign_block<E: EthSpec, Payload: AbstractExecPayload<E>>(
         &self,
         _validator_pubkey: PublicKeyBytes,
         block: BeaconBlock<E, Payload>,
@@ -221,7 +218,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         todo!()
     }
 
-    async fn sign_attestation(
+    async fn sign_attestation<E: EthSpec>(
         &self,
         _validator_pubkey: PublicKeyBytes,
         _validator_committee_position: usize,
@@ -231,7 +228,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         todo!()
     }
 
-    async fn sign_voluntary_exit(
+    async fn sign_voluntary_exit<E: EthSpec>(
         &self,
         _validator_pubkey: PublicKeyBytes,
         _voluntary_exit: VoluntaryExit,
@@ -240,7 +237,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         Err(Error::SpecificError(SpecificError::ExitsUnsupported))
     }
 
-    async fn sign_validator_registration_data(
+    async fn sign_validator_registration_data<E: EthSpec>(
         &self,
         validator_registration_data: ValidatorRegistrationData,
     ) -> Result<SignedValidatorRegistrationData, Error> {
@@ -257,7 +254,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         })
     }
 
-    async fn produce_signed_aggregate_and_proof(
+    async fn produce_signed_aggregate_and_proof<E: EthSpec>(
         &self,
         _validator_pubkey: PublicKeyBytes,
         _aggregator_index: u64,
@@ -267,7 +264,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         todo!()
     }
 
-    async fn produce_selection_proof(
+    async fn produce_selection_proof<E: EthSpec>(
         &self,
         validator_pubkey: PublicKeyBytes,
         slot: Slot,
@@ -281,7 +278,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
             .map(SelectionProof::from)
     }
 
-    async fn produce_sync_selection_proof(
+    async fn produce_sync_selection_proof<E: EthSpec>(
         &self,
         validator_pubkey: &PublicKeyBytes,
         slot: Slot,
@@ -300,7 +297,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
             .map(SyncSelectionProof::from)
     }
 
-    async fn produce_sync_committee_signature(
+    async fn produce_sync_committee_signature<E: EthSpec>(
         &self,
         _slot: Slot,
         _beacon_block_root: Hash256,
@@ -310,7 +307,7 @@ impl<E: EthSpec> ValidatorStore<E> for AnchorValidatorStore<E> {
         todo!()
     }
 
-    async fn produce_signed_contribution_and_proof(
+    async fn produce_signed_contribution_and_proof<E: EthSpec>(
         &self,
         _aggregator_index: u64,
         _aggregator_pubkey: PublicKeyBytes,
