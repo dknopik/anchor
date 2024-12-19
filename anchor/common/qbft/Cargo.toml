@@ -6,7 +6,7 @@ edition = { workspace = true }
 
 [dependencies]
 derive_more = { workspace = true }
-futures = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
 tracing = { workspace = true }
+
+[dev-dependencies]
 tracing-subscriber = { workspace = true }
