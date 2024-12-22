@@ -202,8 +202,8 @@ impl ValidatorStore for AnchorValidatorStore {
         // Make sure the block slot is not higher than the current slot to avoid potential attacks.
         if block.slot() > current_slot {
             warn!(
-                "block_slot" = block.slot().as_u64(),
-                "current_slot" = current_slot.as_u64(),
+                block_slot = block.slot().as_u64(),
+                current_slot = current_slot.as_u64(),
                 "Not signing block with slot greater than current slot",
             );
             return Err(Error::GreaterThanCurrentSlot {

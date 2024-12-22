@@ -387,36 +387,36 @@ async fn init_from_beacon_node<E: EthSpec>(
 
         if proposer_total > 0 && proposer_available == 0 {
             warn!(
-                "retry in" = format!("{} seconds", RETRY_DELAY.as_secs()),
-                "total_proposers" = proposer_total,
-                "available_proposers" = proposer_available,
-                "total_beacon_nodes" = num_total,
-                "available_beacon_nodes" = num_available,
+                retry_in = format!("{} seconds", RETRY_DELAY.as_secs()),
+                total_proposers = proposer_total,
+                available_proposers = proposer_available,
+                total_beacon_nodes = num_total,
+                available_beacon_nodes = num_available,
                 "Unable to connect to a proposer node"
             );
         }
 
         if num_available > 0 && proposer_available == 0 {
             info!(
-                "total" = num_total,
-                "available" = num_available,
+                total = num_total,
+                available = num_available,
                 "Initialized beacon node connections"
             );
             break;
         } else if num_available > 0 {
             info!(
-                "total" = num_total,
-                "available" = num_available,
-                "proposers_available" = proposer_available,
-                "proposers_total" = proposer_total,
+                total = num_total,
+                available = num_available,
+                proposers_available = proposer_available,
+                proposers_total = proposer_total,
                 "Initialized beacon node connections"
             );
             break;
         } else {
             warn!(
-                "retry in" = format!("{} seconds", RETRY_DELAY.as_secs()),
-                "total" = num_total,
-                "available" = num_available,
+                retry_in = format!("{} seconds", RETRY_DELAY.as_secs()),
+                total = num_total,
+                available = num_available,
                 "Unable to connect to a beacon node"
             );
             sleep(RETRY_DELAY).await;
@@ -441,7 +441,7 @@ async fn init_from_beacon_node<E: EthSpec>(
                     info!("Waiting for genesis",);
                 } else {
                     error!(
-                        "error" = ?errors.0,
+                        error = ?errors.0,
                         "Errors polling beacon node",
                     );
                 }
@@ -470,7 +470,7 @@ async fn wait_for_genesis(
     // the slot clock.
     if now < genesis_time {
         info!(
-            "seconds_to_wait" = (genesis_time - now).as_secs(),
+            seconds_to_wait = (genesis_time - now).as_secs(),
             "Starting node prior to genesis",
         );
 
@@ -482,12 +482,12 @@ async fn wait_for_genesis(
         };
 
         info!(
-            "ms_since_genesis" = (genesis_time - now).as_millis(),
+            ms_since_genesis = (genesis_time - now).as_millis(),
             "Genesis has occurred",
         );
     } else {
         info!(
-            "seconds_ago" = (now - genesis_time).as_secs(),
+            seconds_ago = (now - genesis_time).as_secs(),
             "Genesis has already occurred",
         );
     }
@@ -513,16 +513,16 @@ async fn poll_whilst_waiting_for_genesis(
 
                 if !is_staking {
                     error!(
-                        "msg" = "this will caused missed duties",
-                        "info" = "see the --staking CLI flag on the beacon node",
+                        msg = "this will caused missed duties",
+                        info = "see the --staking CLI flag on the beacon node",
                         "Staking is disabled for beacon node"
                     );
                 }
 
                 if now < genesis_time {
                     info!(
-                        "bn_staking_enabled" = is_staking,
-                        "seconds_to_wait" = (genesis_time - now).as_secs(),
+                        bn_staking_enabled = is_staking,
+                        seconds_to_wait = (genesis_time - now).as_secs(),
                         "Waiting for genesis"
                     );
                 } else {
@@ -531,7 +531,7 @@ async fn poll_whilst_waiting_for_genesis(
             }
             Err(e) => {
                 error!(
-                    "error" = ?e.0,
+                    error = ?e.0,
                     "Error polling beacon node",
                 );
             }
