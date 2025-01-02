@@ -1,6 +1,9 @@
 use dashmap::DashMap;
 use processor::{DropOnFinish, Senders, WorkItem};
-use qbft::{Completed, Config, ConfigBuilder, ConfigBuilderError, DefaultLeaderFunction, InstanceHeight, Message as NetworkMessage, OperatorId as QbftOperatorId};
+use qbft::{
+    Completed, Config, ConfigBuilder, ConfigBuilderError, DefaultLeaderFunction, InstanceHeight,
+    Message as NetworkMessage, OperatorId as QbftOperatorId,
+};
 use slot_clock::SlotClock;
 use ssv_types::message::{BeaconVote, ValidatorConsensusData};
 use ssv_types::{Cluster, ClusterId, OperatorId};
@@ -77,7 +80,8 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
     ) -> Result<Completed<D>, QbftError> {
         let (result_sender, result_receiver) = oneshot::channel();
         let mut config = ConfigBuilder::default();
-        config.operator_id(self.operator_id)
+        config
+            .operator_id(self.operator_id)
             .committee_size(committee.cluster_members.len())
             .quorum_size(committee.cluster_members.len() - committee.faulty as usize);
         let config = initial.config(&mut config, &id)?;

@@ -1,10 +1,10 @@
 //! A collection of types used by the QBFT modules
 use crate::validation::ValidatedData;
+use crate::Data;
 use derive_more::{Add, Deref, From};
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;
-use crate::Data;
 
 /// Generic LeaderFunction trait to allow for future implementations of the QBFT module
 pub trait LeaderFunction {
