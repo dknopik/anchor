@@ -286,7 +286,7 @@ impl Client {
                 .executor(executor.clone())
                 //.enable_high_validator_count_metrics(config.enable_high_validator_count_metrics)
                 .distributed(true)
-                .build::<E>()?,
+                .build()?,
         );
 
         // Update the metrics server.
@@ -347,18 +347,18 @@ impl Client {
         // Wait until genesis has occurred.
         wait_for_genesis(&beacon_nodes, genesis_time).await?;
 
-        duties_service::start_update_service(duties_service.clone(), block_service_tx);
+        duties_service::start_update_service::<_, _, E>(duties_service.clone(), block_service_tx);
 
         block_service
             .start_update_service::<E>(block_service_rx)
             .map_err(|e| format!("Unable to start block service: {}", e))?;
 
         attestation_service
-            .start_update_service(&spec)
+            .start_update_service::<E>(&spec)
             .map_err(|e| format!("Unable to start attestation service: {}", e))?;
 
         sync_committee_service
-            .start_update_service(&spec)
+            .start_update_service::<E>(&spec)
             .map_err(|e| format!("Unable to start sync committee service: {}", e))?;
 
         preparation_service

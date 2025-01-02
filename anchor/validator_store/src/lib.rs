@@ -317,7 +317,7 @@ impl ValidatorStore for AnchorValidatorStore {
         todo!()
     }
 
-    fn prune_slashing_protection_db(&self, _current_epoch: Epoch, _first_run: bool) {
+    fn prune_slashing_protection_db<E: EthSpec>(&self, _current_epoch: Epoch, _first_run: bool) {
         // TODO slashing protection
     }
 
