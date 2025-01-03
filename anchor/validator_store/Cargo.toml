@@ -8,8 +8,11 @@ rust-version = "1.81.0"
 [dependencies]
 dashmap = "6.1.0"
 processor = { workspace = true }
+qbft = { workspace = true }
+qbft_manager = { workspace = true }
 safe_arith = { workspace = true }
 signature_collector = { workspace = true }
+slot_clock = { workspace = true }
 ssv_types = { workspace = true }
 tracing = { workspace = true }
 types = { workspace = true }

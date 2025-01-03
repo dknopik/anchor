@@ -1,13 +1,22 @@
+extern crate core;
+
 use dashmap::DashMap;
+use qbft::Completed;
+use qbft_manager::{CommitteeInstanceId, QbftError, QbftManager, ValidatorInstanceId};
 use safe_arith::{ArithError, SafeArith};
 use signature_collector::{CollectionError, SignatureCollectorManager, SignatureRequest};
+use slot_clock::SlotClock;
+use ssv_types::message::{
+    BeaconVote, DataSsz, ValidatorConsensusData, ValidatorDuty, BEACON_ROLE_AGGREGATOR,
+    BEACON_ROLE_PROPOSER, DATA_VERSION_ALTAIR, DATA_VERSION_BELLATRIX, DATA_VERSION_CAPELLA,
+    DATA_VERSION_DENEB, DATA_VERSION_PHASE0, DATA_VERSION_UNKNOWN,
+};
 use ssv_types::{Cluster, OperatorId};
 use std::sync::Arc;
 use tracing::{error, warn};
 use types::attestation::Attestation;
 use types::beacon_block::BeaconBlock;
 use types::graffiti::Graffiti;
-use types::payload::AbstractExecPayload;
 use types::selection_proof::SelectionProof;
 use types::signed_aggregate_and_proof::SignedAggregateAndProof;
 use types::signed_beacon_block::SignedBeaconBlock;
@@ -23,11 +32,12 @@ use types::validator_registration_data::{
 };
 use types::voluntary_exit::VoluntaryExit;
 use types::{
-    Address, ChainSpec, Domain, EthSpec, Hash256, PublicKeyBytes, SecretKey, Signature, SignedRoot,
+    AbstractExecPayload, Address, AggregateAndProof, BlindedPayload, ChainSpec, Domain, EthSpec,
+    FullPayload, Hash256, PublicKeyBytes, SecretKey, Signature, SignedRoot,
     SyncAggregatorSelectionData,
 };
 use validator_store::{
-    DoppelgangerStatus, Error as ValidatorStoreError, ProposalData, ValidatorStore,
+    DoppelgangerStatus, Error as ValidatorStoreError, ProposalData, SignBlock, ValidatorStore,
 };
 
 struct InitializedCluster {
@@ -35,29 +45,39 @@ struct InitializedCluster {
     decrypted_key_share: SecretKey,
 }
 
-pub struct AnchorValidatorStore {
+pub struct AnchorValidatorStore<T: SlotClock + 'static, E: EthSpec> {
     clusters: DashMap<PublicKeyBytes, InitializedCluster>,
     signature_collector: Arc<SignatureCollectorManager>,
+    qbft_manager: Arc<QbftManager<T, E>>,
     spec: Arc<ChainSpec>,
     genesis_validators_root: Hash256,
     operator_id: OperatorId,
 }
 
-impl AnchorValidatorStore {
+impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
     pub fn new(
         _processor: processor::Senders,
         signature_collector: Arc<SignatureCollectorManager>,
+        qbft_manager: Arc<QbftManager<T, E>>,
         spec: Arc<ChainSpec>,
         genesis_validators_root: Hash256,
         operator_id: OperatorId,
-    ) -> AnchorValidatorStore {
+    ) -> AnchorValidatorStore<T, E> {
         Self {
             clusters: DashMap::new(),
             signature_collector,
+            qbft_manager,
             spec,
             genesis_validators_root,
             operator_id,
         }
+    }
+
+    fn cluster(&self, validator_pubkey: PublicKeyBytes) -> Result<Cluster, Error> {
+        self.clusters
+            .get(&validator_pubkey)
+            .map(|c| c.cluster.clone())
+            .ok_or(Error::UnknownPubkey(validator_pubkey))
     }
 
     fn get_domain(&self, epoch: Epoch, domain: Domain) -> Hash256 {
@@ -97,6 +117,74 @@ impl AnchorValidatorStore {
         drop(cluster);
         Ok((*collector.await.map_err(SpecificError::from)?).clone())
     }
+
+    async fn sign_abstract_block<
+        P: AbstractExecPayload<E>,
+        F: FnOnce(BeaconBlock<E, P>) -> DataSsz<E>,
+    >(
+        &self,
+        validator_pubkey: PublicKeyBytes,
+        block: BeaconBlock<E, P>,
+        current_slot: Slot,
+        wrapper: F,
+    ) -> Result<DataSsz<E>, Error> {
+        // Make sure the block slot is not higher than the current slot to avoid potential attacks.
+        if block.slot() > current_slot {
+            warn!(
+                block_slot = block.slot().as_u64(),
+                current_slot = current_slot.as_u64(),
+                "Not signing block with slot greater than current slot",
+            );
+            return Err(Error::GreaterThanCurrentSlot {
+                slot: block.slot(),
+                current_slot,
+            });
+        }
+
+        // todo slashing protection
+
+        let cluster = self.cluster(validator_pubkey)?;
+
+        // first, we have to get to consensus
+        let completed = self
+            .qbft_manager
+            .decide_instance(
+                ValidatorInstanceId {
+                    validator: validator_pubkey,
+                    instance_height: block.slot().as_usize().into(),
+                },
+                ValidatorConsensusData {
+                    duty: ValidatorDuty {
+                        r#type: BEACON_ROLE_PROPOSER,
+                        pub_key: validator_pubkey,
+                        slot: block.slot().as_usize().into(),
+                        validator_index: cluster.validator_metadata.validator_index,
+                        committee_index: 0,
+                        committee_length: 0,
+                        committees_at_slot: 0,
+                        validator_committee_index: 0,
+                        validator_sync_committee_indices: Default::default(),
+                    },
+                    version: match &block {
+                        BeaconBlock::Base(_) => DATA_VERSION_PHASE0,
+                        BeaconBlock::Altair(_) => DATA_VERSION_ALTAIR,
+                        BeaconBlock::Bellatrix(_) => DATA_VERSION_BELLATRIX,
+                        BeaconBlock::Capella(_) => DATA_VERSION_CAPELLA,
+                        BeaconBlock::Deneb(_) => DATA_VERSION_DENEB,
+                        BeaconBlock::Electra(_) => DATA_VERSION_UNKNOWN,
+                    },
+                    data_ssz: Box::new(wrapper(block)),
+                },
+                &cluster,
+            )
+            .await
+            .map_err(SpecificError::from)?;
+        let data = match completed {
+            Completed::TimedOut => return Err(Error::SpecificError(SpecificError::Timeout)),
+            Completed::Success(data) => data,
+        };
+        Ok(*data.data_ssz)
+    }
 }
 
 #[derive(Debug)]
@@ -104,6 +192,9 @@ pub enum SpecificError {
     ExitsUnsupported,
     SignatureCollectionFailed(CollectionError),
     ArithError(ArithError),
+    QbftError(QbftError),
+    Timeout,
+    InvalidQbftData,
 }
 
 impl From<CollectionError> for SpecificError {
@@ -118,10 +209,17 @@ impl From<ArithError> for SpecificError {
     }
 }
 
+impl From<QbftError> for SpecificError {
+    fn from(err: QbftError) -> SpecificError {
+        SpecificError::QbftError(err)
+    }
+}
+
 pub type Error = ValidatorStoreError<SpecificError>;
 
-impl ValidatorStore for AnchorValidatorStore {
+impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
     type Error = SpecificError;
+    type E = E;
 
     fn validator_index(&self, pubkey: &PublicKeyBytes) -> Option<u64> {
         self.clusters
@@ -163,7 +261,7 @@ impl ValidatorStore for AnchorValidatorStore {
         Some(1)
     }
 
-    async fn randao_reveal<E: EthSpec>(
+    async fn randao_reveal(
         &self,
         validator_pubkey: PublicKeyBytes,
         signing_epoch: Epoch,
@@ -193,42 +291,63 @@ impl ValidatorStore for AnchorValidatorStore {
         }
     }
 
-    async fn sign_block<E: EthSpec, Payload: AbstractExecPayload<E>>(
+    async fn sign_attestation(
         &self,
-        _validator_pubkey: PublicKeyBytes,
-        block: BeaconBlock<E, Payload>,
-        current_slot: Slot,
-    ) -> Result<SignedBeaconBlock<E, Payload>, Error> {
-        // Make sure the block slot is not higher than the current slot to avoid potential attacks.
-        if block.slot() > current_slot {
-            warn!(
-                block_slot = block.slot().as_u64(),
-                current_slot = current_slot.as_u64(),
-                "Not signing block with slot greater than current slot",
-            );
-            return Err(Error::GreaterThanCurrentSlot {
-                slot: block.slot(),
-                current_slot,
+        validator_pubkey: PublicKeyBytes,
+        validator_committee_position: usize,
+        attestation: &mut Attestation<E>,
+        current_epoch: Epoch,
+    ) -> Result<(), Error> {
+        // Make sure the target epoch is not higher than the current epoch to avoid potential attacks.
+        if attestation.data().target.epoch > current_epoch {
+            return Err(Error::GreaterThanCurrentEpoch {
+                epoch: attestation.data().target.epoch,
+                current_epoch,
             });
         }
 
         // todo slashing protection
 
-        // first, we have to get to consensus
-        todo!()
+        let cluster = self.cluster(validator_pubkey)?;
+
+        let completed = self
+            .qbft_manager
+            .decide_instance(
+                CommitteeInstanceId {
+                    committee: cluster.cluster_id,
+                    instance_height: current_epoch.as_usize().into(),
+                },
+                BeaconVote {
+                    block_root: attestation.data().beacon_block_root,
+                    source: attestation.data().source,
+                    target: attestation.data().target,
+                },
+                &cluster,
+            )
+            .await
+            .map_err(SpecificError::from)?;
+        let data = match completed {
+            Completed::TimedOut => return Err(Error::SpecificError(SpecificError::Timeout)),
+            Completed::Success(data) => data,
+        };
+        attestation.data_mut().beacon_block_root = data.block_root;
+        attestation.data_mut().source = data.source;
+        attestation.data_mut().target = data.target;
+
+        // yay - we agree! let's sign the att we agreed on
+        let domain_hash = self.get_domain(current_epoch, Domain::BeaconAttester);
+        let signing_root = attestation.data().signing_root(domain_hash);
+        let signature = self
+            .collect_signature(validator_pubkey, signing_root)
+            .await?;
+        attestation
+            .add_signature(&signature, validator_committee_position)
+            .map_err(Error::UnableToSignAttestation)?;
+
+        Ok(())
     }
 
-    async fn sign_attestation<E: EthSpec>(
-        &self,
-        _validator_pubkey: PublicKeyBytes,
-        _validator_committee_position: usize,
-        _attestation: &mut Attestation<E>,
-        _current_epoch: Epoch,
-    ) -> Result<(), Error> {
-        todo!()
-    }
-
-    async fn sign_voluntary_exit<E: EthSpec>(
+    async fn sign_voluntary_exit(
         &self,
         _validator_pubkey: PublicKeyBytes,
         _voluntary_exit: VoluntaryExit,
@@ -237,7 +356,7 @@ impl ValidatorStore for AnchorValidatorStore {
         Err(Error::SpecificError(SpecificError::ExitsUnsupported))
     }
 
-    async fn sign_validator_registration_data<E: EthSpec>(
+    async fn sign_validator_registration_data(
         &self,
         validator_registration_data: ValidatorRegistrationData,
     ) -> Result<SignedValidatorRegistrationData, Error> {
@@ -254,17 +373,69 @@ impl ValidatorStore for AnchorValidatorStore {
         })
     }
 
-    async fn produce_signed_aggregate_and_proof<E: EthSpec>(
+    async fn produce_signed_aggregate_and_proof(
         &self,
-        _validator_pubkey: PublicKeyBytes,
-        _aggregator_index: u64,
-        _aggregate: Attestation<E>,
-        _selection_proof: SelectionProof,
+        validator_pubkey: PublicKeyBytes,
+        aggregator_index: u64,
+        aggregate: Attestation<E>,
+        selection_proof: SelectionProof,
     ) -> Result<SignedAggregateAndProof<E>, Error> {
-        todo!()
+        let signing_epoch = aggregate.data().target.epoch;
+        let cluster = self.cluster(validator_pubkey)?;
+
+        let message =
+            AggregateAndProof::from_attestation(aggregator_index, aggregate, selection_proof);
+
+        // first, we have to get to consensus
+        let completed = self
+            .qbft_manager
+            .decide_instance(
+                ValidatorInstanceId {
+                    validator: validator_pubkey,
+                    // todo not sure if correct height
+                    instance_height: message.aggregate().data().slot.as_usize().into(),
+                },
+                ValidatorConsensusData {
+                    duty: ValidatorDuty {
+                        r#type: BEACON_ROLE_AGGREGATOR,
+                        pub_key: validator_pubkey,
+                        slot: message.aggregate().data().slot,
+                        validator_index: cluster.validator_metadata.validator_index,
+                        committee_index: message.aggregate().data().index,
+                        // todo fill rest correctly
+                        committee_length: 0,
+                        committees_at_slot: 0,
+                        validator_committee_index: 0,
+                        validator_sync_committee_indices: Default::default(),
+                    },
+                    version: DATA_VERSION_PHASE0,
+                    data_ssz: Box::new(DataSsz::AggregateAndProof(message)),
+                },
+                &cluster,
+            )
+            .await
+            .map_err(SpecificError::from)?;
+        let data = match completed {
+            Completed::TimedOut => return Err(Error::SpecificError(SpecificError::Timeout)),
+            Completed::Success(data) => data,
+        };
+        let message = match *data.data_ssz {
+            DataSsz::AggregateAndProof(message) => message,
+            _ => return Err(Error::SpecificError(SpecificError::InvalidQbftData)),
+        };
+
+        let signing_context = self.get_domain(signing_epoch, Domain::AggregateAndProof);
+        let signing_root = message.signing_root(signing_context);
+        let signature = self
+            .collect_signature(validator_pubkey, signing_root)
+            .await?;
+
+        Ok(SignedAggregateAndProof::from_aggregate_and_proof(
+            message, signature,
+        ))
     }
 
-    async fn produce_selection_proof<E: EthSpec>(
+    async fn produce_selection_proof(
         &self,
         validator_pubkey: PublicKeyBytes,
         slot: Slot,
@@ -278,7 +449,7 @@ impl ValidatorStore for AnchorValidatorStore {
             .map(SelectionProof::from)
     }
 
-    async fn produce_sync_selection_proof<E: EthSpec>(
+    async fn produce_sync_selection_proof(
         &self,
         validator_pubkey: &PublicKeyBytes,
         slot: Slot,
@@ -297,7 +468,7 @@ impl ValidatorStore for AnchorValidatorStore {
             .map(SyncSelectionProof::from)
     }
 
-    async fn produce_sync_committee_signature<E: EthSpec>(
+    async fn produce_sync_committee_signature(
         &self,
         _slot: Slot,
         _beacon_block_root: Hash256,
@@ -307,7 +478,7 @@ impl ValidatorStore for AnchorValidatorStore {
         todo!()
     }
 
-    async fn produce_signed_contribution_and_proof<E: EthSpec>(
+    async fn produce_signed_contribution_and_proof(
         &self,
         _aggregator_index: u64,
         _aggregator_pubkey: PublicKeyBytes,
@@ -317,7 +488,7 @@ impl ValidatorStore for AnchorValidatorStore {
         todo!()
     }
 
-    fn prune_slashing_protection_db<E: EthSpec>(&self, _current_epoch: Epoch, _first_run: bool) {
+    fn prune_slashing_protection_db(&self, _current_epoch: Epoch, _first_run: bool) {
         // TODO slashing protection
     }
 
@@ -325,8 +496,71 @@ impl ValidatorStore for AnchorValidatorStore {
         self.clusters.get(pubkey).map(|v| ProposalData {
             validator_index: Some(v.cluster.validator_metadata.validator_index.0 as u64),
             fee_recipient: Some(v.cluster.validator_metadata.fee_recipient),
-            gas_limit: 30_000_000,    // TODO support scalooors
+            gas_limit: 29_999_998,    // TODO support scalooors
             builder_proposals: false, // TODO support MEVooors
         })
+    }
+}
+
+impl<T: SlotClock, E: EthSpec> SignBlock<E, FullPayload<E>, SpecificError>
+    for AnchorValidatorStore<T, E>
+{
+    async fn sign_block(
+        &self,
+        validator_pubkey: PublicKeyBytes,
+        block: BeaconBlock<E, FullPayload<E>>,
+        current_slot: Slot,
+    ) -> Result<SignedBeaconBlock<E, FullPayload<E>>, ValidatorStoreError<SpecificError>> {
+        let data = self
+            .sign_abstract_block(validator_pubkey, block, current_slot, DataSsz::BeaconBlock)
+            .await?;
+        let block = match data {
+            DataSsz::BeaconBlock(block) => block,
+            // todo what do if we agree on a blind block
+            _ => return Err(Error::SpecificError(SpecificError::InvalidQbftData)),
+        };
+
+        // yay - we agree! let's sign the block we agreed on
+        let domain_hash = self.get_domain(block.epoch(), Domain::BeaconProposer);
+        let signing_root = block.signing_root(domain_hash);
+        let signature = self
+            .collect_signature(validator_pubkey, signing_root)
+            .await?;
+
+        Ok(SignedBeaconBlock::from_block(block, signature))
+    }
+}
+
+impl<T: SlotClock, E: EthSpec> SignBlock<E, BlindedPayload<E>, SpecificError>
+    for AnchorValidatorStore<T, E>
+{
+    async fn sign_block(
+        &self,
+        validator_pubkey: PublicKeyBytes,
+        block: BeaconBlock<E, BlindedPayload<E>>,
+        current_slot: Slot,
+    ) -> Result<SignedBeaconBlock<E, BlindedPayload<E>>, Error> {
+        let data = self
+            .sign_abstract_block(
+                validator_pubkey,
+                block,
+                current_slot,
+                DataSsz::BlindedBeaconBlock,
+            )
+            .await?;
+        let block = match data {
+            DataSsz::BlindedBeaconBlock(block) => block,
+            // todo what do if we agree on a non-blind block
+            _ => return Err(Error::SpecificError(SpecificError::InvalidQbftData)),
+        };
+
+        // yay - we agree! let's sign the block we agreed on
+        let domain_hash = self.get_domain(block.epoch(), Domain::BeaconProposer);
+        let signing_root = block.signing_root(domain_hash);
+        let signature = self
+            .collect_signature(validator_pubkey, signing_root)
+            .await?;
+
+        Ok(SignedBeaconBlock::from_block(block, signature))
     }
 }

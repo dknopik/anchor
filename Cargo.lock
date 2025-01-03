@@ -177,8 +177,11 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "processor",
+ "qbft",
+ "qbft_manager",
  "safe_arith",
  "signature_collector",
+ "slot_clock",
  "ssv_types",
  "tracing",
  "types",
@@ -503,9 +506,9 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.83"
+version = "0.1.84"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "721cae7de5c34fbb2acd27e21e6d2cf7b886dce0c27388d46c4e6c47ea4318dd"
+checksum = "1b1244b10dcd56c92219da4e14caa97e312079e185f04ba3eea25061561dc0a0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -662,7 +665,7 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "beacon_node_fallback"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "eth2",
  "futures",
@@ -769,7 +772,7 @@ dependencies = [
 [[package]]
 name = "bls"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "alloy-primitives",
  "arbitrary",
@@ -886,9 +889,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.6"
+version = "1.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d6dbb628b8f8555f86d0323c2eb39e3ec81901f4b83e091db8a6a76d316a333"
+checksum = "a012a0df96dd6d06ba9a1b29d6402d1a5d77c6befd2566afdc26e10603dc93d7"
 dependencies = [
  "jobserver",
  "libc",
@@ -1027,7 +1030,7 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 [[package]]
 name = "clap_utils"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "alloy-primitives",
  "clap",
@@ -1059,6 +1062,7 @@ dependencies = [
  "network",
  "parking_lot",
  "processor",
+ "qbft_manager",
  "sensitive_url",
  "serde",
  "signature_collector",
@@ -1093,7 +1097,7 @@ checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 [[package]]
 name = "compare_fields"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "itertools 0.10.5",
 ]
@@ -1101,7 +1105,7 @@ dependencies = [
 [[package]]
 name = "compare_fields_derive"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -1639,7 +1643,7 @@ dependencies = [
 [[package]]
 name = "directory"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "clap",
  "clap_utils",
@@ -1891,7 +1895,7 @@ dependencies = [
 [[package]]
 name = "eth2"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "derivative",
  "eth2_keystore",
@@ -1921,7 +1925,7 @@ dependencies = [
 [[package]]
 name = "eth2_config"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "paste",
  "types",
@@ -1930,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "eth2_interop_keypairs"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "bls",
  "ethereum_hashing",
@@ -1943,7 +1947,7 @@ dependencies = [
 [[package]]
 name = "eth2_key_derivation"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "bls",
  "num-bigint-dig",
@@ -1955,7 +1959,7 @@ dependencies = [
 [[package]]
 name = "eth2_keystore"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "aes 0.7.5",
  "bls",
@@ -1977,7 +1981,7 @@ dependencies = [
 [[package]]
 name = "eth2_network_config"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "bytes",
  "discv5",
@@ -2166,7 +2170,7 @@ dependencies = [
 [[package]]
 name = "filesystem"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "winapi",
  "windows-acl",
@@ -2187,7 +2191,7 @@ dependencies = [
 [[package]]
 name = "fixed_bytes"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "alloy-primitives",
  "safe_arith",
@@ -2452,7 +2456,7 @@ checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 [[package]]
 name = "gossipsub"
 version = "0.5.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "async-channel",
  "asynchronous-codec",
@@ -2481,7 +2485,7 @@ dependencies = [
 [[package]]
 name = "graffiti_file"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "bls",
  "serde",
@@ -3174,7 +3178,7 @@ dependencies = [
 [[package]]
 name = "int_to_bytes"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "bytes",
 ]
@@ -3322,7 +3326,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "arbitrary",
  "c-kzg",
@@ -3917,7 +3921,7 @@ dependencies = [
 [[package]]
 name = "lighthouse_network"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -3966,7 +3970,7 @@ dependencies = [
 [[package]]
 name = "lighthouse_version"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "git-version",
  "target_info",
@@ -4015,7 +4019,7 @@ checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 [[package]]
 name = "logging"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "chrono",
  "metrics",
@@ -4055,7 +4059,7 @@ dependencies = [
 [[package]]
 name = "lru_cache"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "fnv",
 ]
@@ -4120,7 +4124,7 @@ dependencies = [
 [[package]]
 name = "merkle_proof"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "alloy-primitives",
  "ethereum_hashing",
@@ -4154,7 +4158,7 @@ dependencies = [
 [[package]]
 name = "metrics"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "prometheus",
 ]
@@ -4852,7 +4856,7 @@ dependencies = [
 [[package]]
 name = "pretty_reqwest_error"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "reqwest",
  "sensitive_url",
@@ -5007,7 +5011,7 @@ dependencies = [
 [[package]]
 name = "proto_array"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "ethereum_ssz",
  "ethereum_ssz_derive",
@@ -5716,7 +5720,7 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 [[package]]
 name = "safe_arith"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 
 [[package]]
 name = "salsa20"
@@ -5837,7 +5841,7 @@ dependencies = [
 [[package]]
 name = "sensitive_url"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "serde",
  "url",
@@ -6034,7 +6038,7 @@ dependencies = [
 [[package]]
 name = "slashing_protection"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "arbitrary",
  "ethereum_serde_utils",
@@ -6153,7 +6157,7 @@ dependencies = [
 [[package]]
 name = "slot_clock"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "metrics",
  "parking_lot",
@@ -6264,7 +6268,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "state_processing"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "arbitrary",
  "bls",
@@ -6296,7 +6300,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "store"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "bls",
  "db-key",
@@ -6379,7 +6383,7 @@ dependencies = [
 [[package]]
 name = "swap_or_not_shuffle"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "alloy-primitives",
  "ethereum_hashing",
@@ -6494,7 +6498,7 @@ checksum = "c63f48baada5c52e65a29eef93ab4f8982681b67f9e8d29c7b05abcfec2b9ffe"
 [[package]]
 name = "task_executor"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "async-channel",
  "futures",
@@ -6508,12 +6512,13 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.14.0"
+version = "3.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28cce251fcbc87fac86a866eeb0d6c2d536fc16d06f184bb61aeae11aa4cee0c"
+checksum = "9a8a559c81686f576e8cd0290cd2a24a2a9ad80c98b3478856500fcbd7acd704"
 dependencies = [
  "cfg-if",
  "fastrand",
+ "getrandom",
  "once_cell",
  "rustix 0.38.42",
  "windows-sys 0.59.0",
@@ -6543,7 +6548,7 @@ dependencies = [
 [[package]]
 name = "test_random_derive"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -6946,7 +6951,7 @@ checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
 [[package]]
 name = "types"
 version = "0.2.1"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -7109,7 +7114,7 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 [[package]]
 name = "unused_port"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "lru_cache",
  "parking_lot",
@@ -7157,7 +7162,7 @@ dependencies = [
 [[package]]
 name = "validator_metrics"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "metrics",
 ]
@@ -7165,7 +7170,7 @@ dependencies = [
 [[package]]
 name = "validator_services"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "beacon_node_fallback",
  "bls",
@@ -7188,7 +7193,7 @@ dependencies = [
 [[package]]
 name = "validator_store"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#ebfe234d364f6a6fb9eef98664658f5f08cad4d7"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
 dependencies = [
  "slashing_protection",
  "types",

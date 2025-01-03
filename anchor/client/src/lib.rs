@@ -14,6 +14,7 @@ use eth2::{BeaconNodeHttpClient, Timeouts};
 use eth2_config::Eth2Config;
 use network::Network;
 use parking_lot::RwLock;
+use qbft_manager::QbftManager;
 use sensitive_url::SensitiveUrl;
 use signature_collector::SignatureCollectorManager;
 use slot_clock::{SlotClock, SystemTimeSlotClock};
@@ -88,13 +89,6 @@ impl Client {
         let mut spec = Eth2Config::mainnet().spec;
         // dirty hack to be able to connect to local kurtosis devnet
         Arc::get_mut(&mut spec).unwrap().genesis_fork_version = [16, 0, 0, 56];
-
-        // Start the processor
-        let processor_senders = processor::spawn(config.processor, executor.clone());
-
-        // Create the processor-adjacent managers
-        let signature_collector =
-            Arc::new(SignatureCollectorManager::new(processor_senders.clone()));
 
         // Optionally start the metrics server.
         let http_metrics_shared_state = if config.http_metrics.enabled {
@@ -269,9 +263,22 @@ impl Client {
         let proposer_nodes = Arc::new(proposer_nodes);
         start_fallback_updater_service::<_, E>(executor.clone(), proposer_nodes.clone())?;
 
-        let validator_store = Arc::new(AnchorValidatorStore::new(
+        // Start the processor
+        let processor_senders = processor::spawn(config.processor, executor.clone());
+
+        // Create the processor-adjacent managers
+        let signature_collector =
+            Arc::new(SignatureCollectorManager::new(processor_senders.clone()));
+        let qbft_manager = Arc::new(QbftManager::new(
+            processor_senders.clone(),
+            OperatorId(1),
+            slot_clock.clone(),
+        ));
+
+        let validator_store = Arc::new(AnchorValidatorStore::<_, E>::new(
             processor_senders,
             signature_collector,
+            qbft_manager,
             spec.clone(),
             genesis_validators_root,
             OperatorId(123),
@@ -347,22 +354,22 @@ impl Client {
         // Wait until genesis has occurred.
         wait_for_genesis(&beacon_nodes, genesis_time).await?;
 
-        duties_service::start_update_service::<_, _, E>(duties_service.clone(), block_service_tx);
+        duties_service::start_update_service(duties_service.clone(), block_service_tx);
 
         block_service
-            .start_update_service::<E>(block_service_rx)
+            .start_update_service(block_service_rx)
             .map_err(|e| format!("Unable to start block service: {}", e))?;
 
         attestation_service
-            .start_update_service::<E>(&spec)
+            .start_update_service(&spec)
             .map_err(|e| format!("Unable to start attestation service: {}", e))?;
 
         sync_committee_service
-            .start_update_service::<E>(&spec)
+            .start_update_service(&spec)
             .map_err(|e| format!("Unable to start sync committee service: {}", e))?;
 
         preparation_service
-            .start_update_service::<E>(&spec)
+            .start_update_service(&spec)
             .map_err(|e| format!("Unable to start preparation service: {}", e))?;
 
         Ok(())

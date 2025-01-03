@@ -23,6 +23,7 @@ hyper = { workspace = true }
 network = { workspace = true }
 parking_lot = { workspace = true }
 processor = { workspace = true }
+qbft_manager = { workspace = true }
 sensitive_url = { workspace = true }
 serde = { workspace = true }
 signature_collector = { workspace = true }

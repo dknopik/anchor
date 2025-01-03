@@ -30,7 +30,7 @@ processor = { path = "anchor/processor" }
 anchor_validator_store = { path = "anchor/validator_store" }
 ssv_types = { path = "anchor/common/ssv_types" }
 signature_collector = { path = "anchor/signature_collector" }
-qbft_manager = { path = "anchor/common/qbft" }
+qbft_manager = { path = "anchor/qbft_manager" }
 lighthouse_network = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 task_executor = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store", default-features = false, features = [ "tracing", ] }
 metrics = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
