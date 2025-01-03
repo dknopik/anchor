@@ -5283,7 +5283,6 @@ dependencies = [
  "libp2p",
  "lighthouse_network 0.2.0 (git+https://github.com/sigp/lighthouse?branch=unstable)",
  "serde",
- "ssv_types",
  "task_executor 0.1.0 (git+https://github.com/sigp/lighthouse?branch=unstable)",
  "tokio",
  "tracing",

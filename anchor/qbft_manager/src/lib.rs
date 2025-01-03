@@ -237,6 +237,7 @@ async fn qbft_instance<D: qbft::Data>(mut rx: UnboundedReceiver<QbftMessage<D>>)
                             qbft::ValidatedData { data: initial },
                             |_| {},
                         ));
+                        instance.start_round();
                         for message in message_buffer {
                             instance.receive(message);
                         }
