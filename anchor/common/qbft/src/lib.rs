@@ -69,7 +69,7 @@ impl<F, D, S> Qbft<F, D, S>
 where
     F: LeaderFunction + Clone,
     D: Data,
-    S: Fn(Message<D>),
+    S: FnMut(Message<D>),
 {
     pub fn new(config: Config<F>, start_data: ValidatedData<D>, send_message: S) -> Self {
         let estimated_map_size = config.committee_size;
@@ -83,7 +83,7 @@ where
             instance_height: config.instance_height,
             config,
             start_data: start_data_hash,
-            data: HashMap::with_capacity(2),
+            data,
             past_consensus: HashMap::with_capacity(2),
             prepare_messages: HashMap::with_capacity(estimated_map_size),
             commit_messages: HashMap::with_capacity(estimated_map_size),
@@ -177,7 +177,7 @@ where
     }
 
     // Handles the beginning of a round.
-    fn start_round(&mut self) {
+    pub fn start_round(&mut self) {
         debug!(round = *self.current_round, "Starting new round",);
 
         // Remove round change messages that would be for previous rounds
