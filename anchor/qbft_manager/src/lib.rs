@@ -1,7 +1,7 @@
 use dashmap::DashMap;
 use processor::{DropOnFinish, Senders, WorkItem};
 use qbft::{
-    Completed, Config, ConfigBuilder, ConfigBuilderError, DefaultLeaderFunction, InstanceHeight,
+    Completed, ConfigBuilder, ConfigBuilderError, DefaultLeaderFunction, InstanceHeight,
     Message as NetworkMessage, OperatorId as QbftOperatorId,
 };
 use slot_clock::SlotClock;
@@ -23,14 +23,14 @@ const QBFT_MESSAGE_NAME: &str = "qbft_message";
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct CommitteeInstanceId {
-    committee: ClusterId,
-    instance_height: InstanceHeight,
+    pub committee: ClusterId,
+    pub instance_height: InstanceHeight,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct ValidatorInstanceId {
-    validator: PublicKeyBytes,
-    instance_height: InstanceHeight,
+    pub validator: PublicKeyBytes,
+    pub instance_height: InstanceHeight,
 }
 
 #[derive(Debug)]
@@ -42,7 +42,7 @@ pub struct QbftMessage<D: qbft::Data> {
 #[derive(Debug)]
 pub enum QbftMessageKind<D: qbft::Data> {
     Initialize {
-        initial: D, // deja vu - i've just been in this place before
+        initial: D,
         config: qbft::Config<DefaultLeaderFunction>,
         on_completed: oneshot::Sender<Completed<D>>,
     },
@@ -56,7 +56,7 @@ type Map<I, D> = DashMap<I, UnboundedSender<QbftMessage<D>>>;
 pub struct QbftManager<T: SlotClock + 'static, E: EthSpec> {
     processor: Senders,
     operator_id: QbftOperatorId,
-    slot_clock: T, // TODO: I added this for some reason - why?
+    _slot_clock: T, // TODO: use this. e.g. properly aligning round intervals with slot etc.
     validator_consensus_data_instances: Map<ValidatorInstanceId, ValidatorConsensusData<E>>,
     beacon_vote_instances: Map<CommitteeInstanceId, BeaconVote>,
 }
@@ -66,7 +66,7 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
         QbftManager {
             processor,
             operator_id: QbftOperatorId(operator_id.0 as usize),
-            slot_clock,
+            _slot_clock: slot_clock,
             validator_consensus_data_instances: DashMap::new(),
             beacon_vote_instances: DashMap::new(),
         }
@@ -179,7 +179,7 @@ impl<T: SlotClock + 'static, E: EthSpec> QbftDecidable<T, E> for BeaconVote {
         &self,
         builder: &mut ConfigBuilder<DefaultLeaderFunction>,
         id: &Self::Id,
-    ) -> Result<Config<DefaultLeaderFunction>, ConfigBuilderError> {
+    ) -> Result<qbft::Config<DefaultLeaderFunction>, ConfigBuilderError> {
         builder.instance_height(id.instance_height).build()
     }
 }
