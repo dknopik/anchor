@@ -3,13 +3,14 @@
 members = [
     "anchor",
     "anchor/client",
+    "anchor/common/qbft",
     "anchor/common/ssv_types",
     "anchor/common/version",
     "anchor/http_api",
     "anchor/http_metrics",
     "anchor/network",
     "anchor/processor",
-    "anchor/qbft",
+    "anchor/qbft_manager",
     "anchor/signature_collector",
     "anchor/validator_store",
 ]
@@ -20,7 +21,7 @@ edition = "2021"
 
 [workspace.dependencies]
 client = { path = "anchor/client" }
-qbft = { path = "anchor/qbft" }
+qbft = { path = "anchor/common/qbft" }
 http_api = { path = "anchor/http_api" }
 http_metrics = { path = "anchor/http_metrics" }
 network = { path = "anchor/network" }
@@ -29,6 +30,7 @@ processor = { path = "anchor/processor" }
 anchor_validator_store = { path = "anchor/validator_store" }
 ssv_types = { path = "anchor/common/ssv_types" }
 signature_collector = { path = "anchor/signature_collector" }
+qbft_manager = { path = "anchor/common/qbft" }
 lighthouse_network = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 task_executor = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store", default-features = false, features = [ "tracing", ] }
 metrics = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
@@ -48,7 +50,7 @@ async-channel = "1.9"
 axum = "0.7.7"
 clap = { version = "4.5.15", features = ["derive", "wrap_help"] }
 dashmap = "6.1.0"
-discv5 = "0.8.0"
+discv5 = "0.9.0"
 dirs = "5.0.1"
 either = "1.13.0"
 futures = "0.3.30"
@@ -67,6 +69,8 @@ tokio = { version = "1.39.2", features = [
 ] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["fmt", "env-filter"] }
+tree_hash = "0.8"
+tree_hash_derive = "0.8"
 base64 = "0.22.1"
 openssl = "0.10.68"
 
