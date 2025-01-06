@@ -1,10 +1,11 @@
 //! A collection of types used by the QBFT modules
 use crate::validation::ValidatedData;
 use crate::Data;
-use derive_more::{Add, Deref, From};
+use derive_more::{Deref, From};
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::num::NonZeroUsize;
 
 /// Generic LeaderFunction trait to allow for future implementations of the QBFT module
 pub trait LeaderFunction {
@@ -14,7 +15,7 @@ pub trait LeaderFunction {
         operator_id: &OperatorId,
         round: Round,
         instance_height: InstanceHeight,
-        committee_size: usize,
+        committee: &[OperatorId],
     ) -> bool;
 }
 
@@ -27,20 +28,29 @@ impl LeaderFunction for DefaultLeaderFunction {
         operator_id: &OperatorId,
         round: Round,
         instance_height: InstanceHeight,
-        committee_size: usize,
+        committee: &[OperatorId],
     ) -> bool {
-        *operator_id == ((*round + *instance_height) % committee_size).into()
+        *operator_id
+            == *committee
+                .get(((round.get() - Round::default().get()) + *instance_height) % committee.len())
+                .expect("slice bounds kept by modulo length")
     }
 }
 
 /// This represents an individual round, these change on regular time intervals
-#[derive(Clone, Copy, Debug, Deref, Default, Add, PartialEq, Eq, Hash, PartialOrd)]
-pub struct Round(usize);
+#[derive(Clone, Copy, Debug, Deref, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Round(NonZeroUsize);
+
+impl Default for Round {
+    fn default() -> Self {
+        Round(NonZeroUsize::new(1).expect("1 != 0"))
+    }
+}
 
 impl Round {
     /// Returns the next round
-    pub fn next(&self) -> Round {
-        Round(self.0 + 1)
+    pub fn next(&self) -> Option<Round> {
+        self.0.checked_add(1).map(Round)
     }
 
     /// Sets the current round
@@ -56,7 +66,7 @@ pub struct OperatorId(pub usize);
 /// The instance height behaves like an "ID" for the QBFT instance. It is used to uniquely identify
 /// different instances, that have the same operator id.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, From, Deref)]
-pub struct InstanceHeight(usize);
+pub struct InstanceHeight(pub usize);
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]

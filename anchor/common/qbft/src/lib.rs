@@ -72,13 +72,13 @@ where
     S: FnMut(Message<D>),
 {
     pub fn new(config: Config<F>, start_data: ValidatedData<D>, send_message: S) -> Self {
-        let estimated_map_size = config.committee_size;
+        let estimated_map_size = config.committee_members.len();
 
         let mut data = HashMap::with_capacity(2);
         let start_data_hash = start_data.data.hash();
         data.insert(start_data_hash.clone(), start_data);
 
-        Qbft {
+        let mut qbft = Qbft {
             current_round: config.round,
             instance_height: config.instance_height,
             config,
@@ -91,7 +91,13 @@ where
             send_message,
             state: InstanceState::AwaitingProposal,
             completed: None,
-        }
+        };
+        qbft.start_round();
+        qbft
+    }
+
+    pub fn start_data_hash(&self) -> &D::Hash {
+        &self.start_data
     }
 
     pub fn config(&self) -> &Config<F> {
@@ -99,13 +105,13 @@ where
     }
 
     /// Returns the operator id for this instance.
-    fn operator_id(&self) -> OperatorId {
+    pub fn operator_id(&self) -> OperatorId {
         self.config.operator_id
     }
 
     /// Obtains the maximum number of faulty nodes that this consensus can tolerate
     fn get_f(&self) -> usize {
-        let f = (self.config.committee_size - 1) % 3;
+        let f = (self.config.committee_members.len() - 1) % 3;
         if f > 0 {
             f
         } else {
@@ -134,7 +140,7 @@ where
             operator_id,
             self.current_round,
             self.instance_height,
-            self.config.committee_size,
+            &self.config.committee_members,
         )
     }
 
@@ -161,8 +167,8 @@ where
                     .max_by_key(|maybe_past_consensus_data| {
                         maybe_past_consensus_data
                             .as_ref()
-                            .map(|consensus_data| *consensus_data.round)
-                            .unwrap_or(0)
+                            .map(|consensus_data| consensus_data.round)
+                            .unwrap_or_default()
                     })?
                     .as_ref()?;
 
@@ -177,8 +183,8 @@ where
     }
 
     // Handles the beginning of a round.
-    pub fn start_round(&mut self) {
-        debug!(round = *self.current_round, "Starting new round",);
+    fn start_round(&mut self) {
+        debug!(round = *self.current_round, "Starting new round");
 
         // Remove round change messages that would be for previous rounds
         self.round_change_messages
@@ -210,6 +216,7 @@ where
         }
     }
 
+    /// message must be authenticated by the caller!
     pub fn receive(&mut self, msg: Message<D>) {
         match msg {
             Message::Propose(operator_id, consensus_data) => {
@@ -464,7 +471,7 @@ where
         }
 
         //  Ensure that this message is for the correct round
-        if round < self.current_round || *round > self.config.max_rounds {
+        if round < self.current_round || round.get() > self.config.max_rounds {
             warn!(
                 from = *operator_id,
                 current_round = *self.current_round,
@@ -528,20 +535,23 @@ where
 
     pub fn end_round(&mut self) {
         debug!(round = *self.current_round, "Incrementing round");
-        if *self.current_round > self.config.max_rounds() {
+        let Some(next_round) = self.current_round.next() else {
+            self.state = InstanceState::Complete;
+            self.completed = Some(Completed::TimedOut);
+            return;
+        };
+        if next_round.get() > self.config.max_rounds() {
             self.state = InstanceState::Complete;
             self.completed = Some(Completed::TimedOut);
             return;
         }
-        self.send_round_change(self.current_round.next());
+        self.send_round_change(next_round);
         // Start a new round
-        self.set_round(self.current_round.next());
+        self.set_round(next_round);
     }
 
     // Send message functions
     fn send_proposal(&mut self, data: ValidatedData<D>) {
-        self.state = InstanceState::Prepare;
-        debug!(?self.state, "State Changed");
         let consensus_data = ConsensusData {
             round: self.current_round,
             data: data.data,
