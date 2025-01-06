@@ -106,8 +106,14 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
         let mut config = ConfigBuilder::default();
         config
             .operator_id(self.operator_id)
-            .committee_size(committee.cluster_members.len())
-            .quorum_size(committee.cluster_members.len() - committee.faulty as usize);
+            .quorum_size(committee.cluster_members.len() - committee.faulty as usize)
+            .committee_members(
+                committee
+                    .cluster_members
+                    .iter()
+                    .map(|m| QbftOperatorId(m.operator_id.0 as usize))
+                    .collect(),
+            );
         let config = initial.config(&mut config, &id)?;
         let sender = D::get_or_spawn_instance(self, id);
         self.processor.urgent_consensus.send_immediate(
@@ -281,7 +287,6 @@ async fn qbft_instance<D: qbft::Data>(mut rx: UnboundedReceiver<QbftMessage<D>>)
                             qbft::ValidatedData { data: initial },
                             |_| {},
                         ));
-                        instance.start_round();
                         for message in message_buffer {
                             instance.receive(message);
                         }
