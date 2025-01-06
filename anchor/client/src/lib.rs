@@ -269,11 +269,11 @@ impl Client {
         // Create the processor-adjacent managers
         let signature_collector =
             Arc::new(SignatureCollectorManager::new(processor_senders.clone()));
-        let qbft_manager = Arc::new(QbftManager::new(
-            processor_senders.clone(),
-            OperatorId(1),
-            slot_clock.clone(),
-        ));
+        let Ok(qbft_manager) =
+            QbftManager::new(processor_senders.clone(), OperatorId(1), slot_clock.clone())
+        else {
+            return Err("Unable to initialize qbft manager".into());
+        };
 
         let validator_store = Arc::new(AnchorValidatorStore::<_, E>::new(
             processor_senders,
@@ -303,7 +303,7 @@ impl Client {
             //ctx.write().duties_service = Some(duties_service.clone());
         }
 
-        let block_service_builder = BlockServiceBuilder::new()
+        let mut block_service_builder = BlockServiceBuilder::new()
             .slot_clock(slot_clock.clone())
             .validator_store(validator_store.clone())
             .beacon_nodes(beacon_nodes.clone())
@@ -313,9 +313,9 @@ impl Client {
         //.graffiti_file(config.graffiti_file.clone());
 
         // If we have proposer nodes, add them to the block service builder.
-        //if proposer_nodes_num > 0 {
-        //    block_service_builder = block_service_builder.proposer_nodes(proposer_nodes.clone());
-        //}
+        if proposer_nodes.num_total().await > 0 {
+            block_service_builder = block_service_builder.proposer_nodes(proposer_nodes.clone());
+        }
 
         let block_service = block_service_builder.build()?;
 

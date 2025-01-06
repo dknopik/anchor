@@ -1,8 +1,8 @@
-extern crate core;
-
 use dashmap::DashMap;
 use qbft::Completed;
-use qbft_manager::{CommitteeInstanceId, QbftError, QbftManager, ValidatorInstanceId};
+use qbft_manager::{
+    CommitteeInstanceId, QbftError, QbftManager, ValidatorDutyKind, ValidatorInstanceId,
+};
 use safe_arith::{ArithError, SafeArith};
 use signature_collector::{CollectionError, SignatureCollectorManager, SignatureRequest};
 use slot_clock::SlotClock;
@@ -32,8 +32,8 @@ use types::validator_registration_data::{
 };
 use types::voluntary_exit::VoluntaryExit;
 use types::{
-    AbstractExecPayload, Address, AggregateAndProof, BlindedPayload, ChainSpec, Domain, EthSpec,
-    FullPayload, Hash256, PublicKeyBytes, SecretKey, Signature, SignedRoot,
+    AbstractExecPayload, Address, AggregateAndProof, BlindedPayload, ChainSpec, Checkpoint, Domain,
+    EthSpec, FullPayload, Hash256, PublicKeyBytes, SecretKey, Signature, SignedRoot,
     SyncAggregatorSelectionData,
 };
 use validator_store::{
@@ -41,8 +41,8 @@ use validator_store::{
 };
 
 struct InitializedCluster {
-    cluster: Cluster,
-    decrypted_key_share: SecretKey,
+    pub cluster: Cluster,
+    pub decrypted_key_share: SecretKey,
 }
 
 pub struct AnchorValidatorStore<T: SlotClock + 'static, E: EthSpec> {
@@ -151,6 +151,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
             .decide_instance(
                 ValidatorInstanceId {
                     validator: validator_pubkey,
+                    duty: ValidatorDutyKind::Proposal,
                     instance_height: block.slot().as_usize().into(),
                 },
                 ValidatorConsensusData {
@@ -315,7 +316,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
             .decide_instance(
                 CommitteeInstanceId {
                     committee: cluster.cluster_id,
-                    instance_height: current_epoch.as_usize().into(),
+                    instance_height: attestation.data().slot.as_usize().into(),
                 },
                 BeaconVote {
                     block_root: attestation.data().beacon_block_root,
@@ -392,7 +393,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
             .decide_instance(
                 ValidatorInstanceId {
                     validator: validator_pubkey,
-                    // todo not sure if correct height
+                    duty: ValidatorDutyKind::Aggregator,
                     instance_height: message.aggregate().data().slot.as_usize().into(),
                 },
                 ValidatorConsensusData {
@@ -402,7 +403,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
                         slot: message.aggregate().data().slot,
                         validator_index: cluster.validator_metadata.validator_index,
                         committee_index: message.aggregate().data().index,
-                        // todo fill rest correctly
+                        // todo it seems the below are not needed (anymore?)
                         committee_length: 0,
                         committees_at_slot: 0,
                         validator_committee_index: 0,
@@ -470,11 +471,40 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
 
     async fn produce_sync_committee_signature(
         &self,
-        _slot: Slot,
-        _beacon_block_root: Hash256,
+        slot: Slot,
+        beacon_block_root: Hash256,
         _validator_index: u64,
-        _validator_pubkey: &PublicKeyBytes,
+        validator_pubkey: &PublicKeyBytes,
     ) -> Result<SyncCommitteeMessage, Error> {
+        let cluster = self.cluster(*validator_pubkey)?;
+
+        let completed = self
+            .qbft_manager
+            .decide_instance(
+                CommitteeInstanceId {
+                    committee: cluster.cluster_id,
+                    instance_height: slot.as_usize().into(),
+                },
+                BeaconVote {
+                    block_root: beacon_block_root,
+                    // todo noooo. where do we get those here?
+                    // -> actively fetch is possibly inefficient
+                    // -> cant wait for sign_attestation, as that might not be called
+                    //      -> with timeout?... eh
+                    // -> modifying interface should be ruled out
+                    // -> modified sync_committee_service? that always triggers an attestation
+                    // -> modified attestation_service? that submits the attestation data every slot?
+                    source: Checkpoint::default(),
+                    target: Checkpoint::default(),
+                },
+                &cluster,
+            )
+            .await
+            .map_err(SpecificError::from)?;
+        let _data = match completed {
+            Completed::TimedOut => return Err(Error::SpecificError(SpecificError::Timeout)),
+            Completed::Success(data) => data,
+        };
         todo!()
     }
 
@@ -485,6 +515,8 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         _contribution: SyncCommitteeContribution<E>,
         _selection_proof: SyncSelectionProof,
     ) -> Result<SignedContributionAndProof<E>, Error> {
+        // todo: ah, we need to vote for all subnets at once here -> shift interface ton one call
+        // for all contributions
         todo!()
     }
 
