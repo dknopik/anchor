@@ -94,12 +94,16 @@ where
         }
     }
 
+    pub fn start_data_hash(&self) -> &D::Hash {
+        &self.start_data
+    }
+
     pub fn config(&self) -> &Config<F> {
         &self.config
     }
 
     /// Returns the operator id for this instance.
-    fn operator_id(&self) -> OperatorId {
+    pub fn operator_id(&self) -> OperatorId {
         self.config.operator_id
     }
 

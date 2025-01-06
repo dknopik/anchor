@@ -9,17 +9,22 @@ use ssv_types::message::{BeaconVote, ValidatorConsensusData};
 use ssv_types::{Cluster, ClusterId, OperatorId};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::sync::Arc;
 use tokio::select;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::Interval;
+use tokio::time::{sleep, Interval};
 use tracing::{error, warn};
 use types::{EthSpec, Hash256, PublicKeyBytes};
 
 const QBFT_INSTANCE_NAME: &str = "qbft_instance";
 const QBFT_MESSAGE_NAME: &str = "qbft_message";
+const QBFT_CLEANER_NAME: &str = "qbft_cleaner";
+
+/// number of slots to keep before the current slot
+const QBFT_RETAIN_SLOTS: u64 = 1;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct CommitteeInstanceId {
@@ -30,7 +35,15 @@ pub struct CommitteeInstanceId {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct ValidatorInstanceId {
     pub validator: PublicKeyBytes,
+    pub duty: ValidatorDuty,
     pub instance_height: InstanceHeight,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum ValidatorDuty {
+    Proposal,
+    Aggregator,
+    SyncCommitteeAggregator,
 }
 
 #[derive(Debug)]
@@ -56,20 +69,31 @@ type Map<I, D> = DashMap<I, UnboundedSender<QbftMessage<D>>>;
 pub struct QbftManager<T: SlotClock + 'static, E: EthSpec> {
     processor: Senders,
     operator_id: QbftOperatorId,
-    _slot_clock: T, // TODO: use this. e.g. properly aligning round intervals with slot etc.
+    slot_clock: T,
     validator_consensus_data_instances: Map<ValidatorInstanceId, ValidatorConsensusData<E>>,
     beacon_vote_instances: Map<CommitteeInstanceId, BeaconVote>,
 }
 
 impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
-    pub fn new(processor: Senders, operator_id: OperatorId, slot_clock: T) -> Self {
-        QbftManager {
+    pub fn new(
+        processor: Senders,
+        operator_id: OperatorId,
+        slot_clock: T,
+    ) -> Result<Arc<Self>, QbftError> {
+        let manager = Arc::new(QbftManager {
             processor,
             operator_id: QbftOperatorId(operator_id.0 as usize),
-            _slot_clock: slot_clock,
+            slot_clock,
             validator_consensus_data_instances: DashMap::new(),
             beacon_vote_instances: DashMap::new(),
-        }
+        });
+
+        manager
+            .processor
+            .permitless
+            .send_async(Arc::clone(&manager).cleaner(), QBFT_CLEANER_NAME)?;
+
+        Ok(manager)
     }
 
     pub async fn decide_instance<D: QbftDecidable<T, E>>(
@@ -118,6 +142,23 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
             QBFT_MESSAGE_NAME,
         )?;
         Ok(())
+    }
+
+    async fn cleaner(self: Arc<Self>) {
+        while !self.processor.permitless.is_closed() {
+            sleep(
+                self.slot_clock
+                    .duration_to_next_slot()
+                    .unwrap_or(self.slot_clock.slot_duration()),
+            )
+            .await;
+            let Some(slot) = self.slot_clock.now() else {
+                continue;
+            };
+            let cutoff = slot.saturating_sub(QBFT_RETAIN_SLOTS);
+            self.beacon_vote_instances
+                .retain(|k, _| k.instance_height.0 >= cutoff.as_usize())
+        }
     }
 }
 
@@ -192,7 +233,10 @@ enum QbftInstance<D: qbft::Data, S: FnMut(NetworkMessage<D>)> {
     Initialized {
         qbft: Box<Qbft<D, S>>,
         round_end: Interval,
-        on_completed: oneshot::Sender<Completed<D>>,
+        on_completed: Vec<oneshot::Sender<Completed<D>>>,
+    },
+    Decided {
+        value: Completed<D>,
     },
 }
 
@@ -203,7 +247,7 @@ async fn qbft_instance<D: qbft::Data>(mut rx: UnboundedReceiver<QbftMessage<D>>)
 
     loop {
         let message = match &mut instance {
-            QbftInstance::Uninitialized { .. } => rx.recv().await,
+            QbftInstance::Uninitialized { .. } | QbftInstance::Decided { .. } => rx.recv().await,
             QbftInstance::Initialized {
                 qbft: instance,
                 round_end,
@@ -244,12 +288,29 @@ async fn qbft_instance<D: qbft::Data>(mut rx: UnboundedReceiver<QbftMessage<D>>)
                         QbftInstance::Initialized {
                             round_end: tokio::time::interval(instance.config().round_time),
                             qbft: instance,
-                            on_completed,
+                            on_completed: vec![on_completed],
                         }
                     }
-                    instance @ QbftInstance::Initialized { .. } => {
-                        warn!("got double initialization of qbft instance, ignoring");
-                        instance
+                    QbftInstance::Initialized {
+                        qbft,
+                        round_end,
+                        on_completed: mut on_completed_vec,
+                    } => {
+                        if qbft.start_data_hash() != &initial.hash() {
+                            warn!("got conflicting double initialization of qbft instance");
+                        }
+                        on_completed_vec.push(on_completed);
+                        QbftInstance::Initialized {
+                            qbft,
+                            round_end,
+                            on_completed: on_completed_vec,
+                        }
+                    }
+                    QbftInstance::Decided { value } => {
+                        if on_completed.send(value.clone()).is_err() {
+                            error!("could not send qbft result");
+                        }
+                        QbftInstance::Decided { value }
                     }
                 }
             }
@@ -259,6 +320,9 @@ async fn qbft_instance<D: qbft::Data>(mut rx: UnboundedReceiver<QbftMessage<D>>)
                 }
                 QbftInstance::Uninitialized { message_buffer } => {
                     message_buffer.push(message);
+                }
+                QbftInstance::Decided { .. } => {
+                    // no longer relevant
                 }
             },
         }
@@ -270,10 +334,12 @@ async fn qbft_instance<D: qbft::Data>(mut rx: UnboundedReceiver<QbftMessage<D>>)
         } = instance
         {
             if let Some(completed) = qbft.completed() {
-                if on_completed.send(completed).is_err() {
-                    error!("could not send qbft result");
+                for on_completed in on_completed {
+                    if on_completed.send(completed.clone()).is_err() {
+                        error!("could not send qbft result");
+                    }
                 }
-                break;
+                instance = QbftInstance::Decided { value: completed };
             } else {
                 instance = QbftInstance::Initialized {
                     qbft,
