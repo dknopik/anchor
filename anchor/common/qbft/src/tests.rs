@@ -24,10 +24,8 @@ struct TestQBFTCommitteeBuilder {
 impl Default for TestQBFTCommitteeBuilder {
     fn default() -> Self {
         let config = Config::<DefaultLeaderFunction> {
-            // Set a default committee size of 5.
-            committee_size: 5,
             // Populate the committee members
-            committee_members: (0..5).map(OperatorId::from).collect::<HashSet<_>>(),
+            committee_members: (0..5).map(OperatorId::from).collect(),
             ..Default::default()
         };
 
@@ -37,12 +35,6 @@ impl Default for TestQBFTCommitteeBuilder {
 
 #[allow(dead_code)]
 impl TestQBFTCommitteeBuilder {
-    /// Sets the size of the testing committee.
-    pub fn committee_size(mut self, committee_size: usize) -> Self {
-        self.config.committee_size = committee_size;
-        self
-    }
-
     /// Sets the config for all instances to run
     pub fn set_config(mut self, config: Config<DefaultLeaderFunction>) -> Self {
         self.config = config;
@@ -88,17 +80,16 @@ fn construct_and_run_committee<D: Data + Default + 'static>(
     // The ID of a committee is just an integer in [0,committee_size)
 
     let msg_queue = Rc::new(RefCell::new(VecDeque::new()));
-    let mut instances = HashMap::with_capacity(config.committee_size);
+    let mut instances = HashMap::with_capacity(config.committee_members.len());
 
-    for id in 0..config.committee_size {
+    for id in 0..config.committee_members.len() {
         let msg_queue = Rc::clone(&msg_queue);
         let id = OperatorId::from(id);
         // Creates a new instance
         config.operator_id = id;
-        let mut instance = Qbft::new(config.clone(), validated_data.clone(), move |message| {
+        let instance = Qbft::new(config.clone(), validated_data.clone(), move |message| {
             msg_queue.borrow_mut().push_back((id, message))
         });
-        instance.start_round();
         instances.insert(id, instance);
     }
 

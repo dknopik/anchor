@@ -1,6 +1,5 @@
 use super::error::ConfigBuilderError;
 use crate::types::{DefaultLeaderFunction, InstanceHeight, LeaderFunction, OperatorId, Round};
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -13,8 +12,7 @@ where
     pub instance_height: InstanceHeight,
     pub round: Round,
     pub pr: usize,
-    pub committee_size: usize,
-    pub committee_members: HashSet<OperatorId>,
+    pub committee_members: Vec<OperatorId>,
     pub quorum_size: usize,
     pub round_time: Duration,
     pub max_rounds: usize,
@@ -27,13 +25,9 @@ impl<F: Clone + LeaderFunction> Config<F> {
     pub fn operator_id(&self) -> OperatorId {
         self.operator_id
     }
-    /// The committee size
-    pub fn committee_size(&self) -> usize {
-        self.committee_size
-    }
 
-    pub fn commmittee_members(&self) -> HashSet<OperatorId> {
-        self.committee_members.clone()
+    pub fn commmittee_members(&self) -> &[OperatorId] {
+        &self.committee_members
     }
 
     /// The quorum size required for the committee to reach consensus
@@ -81,8 +75,7 @@ impl Default for ConfigBuilder<DefaultLeaderFunction> {
             config: Config {
                 operator_id: OperatorId::default(),
                 instance_height: InstanceHeight::default(),
-                committee_size: 0,
-                committee_members: HashSet::new(),
+                committee_members: vec![],
                 quorum_size: 4,
                 round: Round::default(),
                 pr: 0,
@@ -110,8 +103,8 @@ impl<F: LeaderFunction + Clone> ConfigBuilder<F> {
         self
     }
 
-    pub fn committee_size(&mut self, committee_size: usize) -> &mut Self {
-        self.config.committee_size = committee_size;
+    pub fn committee_members(&mut self, committee_members: Vec<OperatorId>) -> &mut Self {
+        self.config.committee_members = committee_members;
         self
     }
 
