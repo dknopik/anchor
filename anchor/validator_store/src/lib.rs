@@ -1,4 +1,7 @@
+pub mod sync_committee_service;
+
 use dashmap::DashMap;
+use futures::future::join_all;
 use qbft::Completed;
 use qbft_manager::{
     CommitteeInstanceId, QbftError, QbftManager, ValidatorDutyKind, ValidatorInstanceId,
@@ -7,9 +10,10 @@ use safe_arith::{ArithError, SafeArith};
 use signature_collector::{CollectionError, SignatureCollectorManager, SignatureRequest};
 use slot_clock::SlotClock;
 use ssv_types::message::{
-    BeaconVote, DataSsz, ValidatorConsensusData, ValidatorDuty, BEACON_ROLE_AGGREGATOR,
-    BEACON_ROLE_PROPOSER, DATA_VERSION_ALTAIR, DATA_VERSION_BELLATRIX, DATA_VERSION_CAPELLA,
-    DATA_VERSION_DENEB, DATA_VERSION_PHASE0, DATA_VERSION_UNKNOWN,
+    BeaconVote, Contribution, DataSsz, ValidatorConsensusData, ValidatorDuty,
+    BEACON_ROLE_AGGREGATOR, BEACON_ROLE_PROPOSER, BEACON_ROLE_SYNC_COMMITTEE_CONTRIBUTION,
+    DATA_VERSION_ALTAIR, DATA_VERSION_BELLATRIX, DATA_VERSION_CAPELLA, DATA_VERSION_DENEB,
+    DATA_VERSION_PHASE0, DATA_VERSION_UNKNOWN,
 };
 use ssv_types::{Cluster, OperatorId};
 use std::sync::Arc;
@@ -32,9 +36,9 @@ use types::validator_registration_data::{
 };
 use types::voluntary_exit::VoluntaryExit;
 use types::{
-    AbstractExecPayload, Address, AggregateAndProof, BlindedPayload, ChainSpec, Checkpoint, Domain,
-    EthSpec, FullPayload, Hash256, PublicKeyBytes, SecretKey, Signature, SignedRoot,
-    SyncAggregatorSelectionData,
+    AbstractExecPayload, Address, AggregateAndProof, BlindedPayload, ChainSpec,
+    ContributionAndProof, Domain, EthSpec, FullPayload, Hash256, PublicKeyBytes, SecretKey,
+    Signature, SignedRoot, SyncAggregatorSelectionData, VariableList,
 };
 use validator_store::{
     DoppelgangerStatus, Error as ValidatorStoreError, ProposalData, SignBlock, ValidatorStore,
@@ -186,16 +190,149 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
         };
         Ok(*data.data_ssz)
     }
+
+    pub async fn produce_sync_committee_signature_with_full_vote(
+        &self,
+        slot: Slot,
+        vote: BeaconVote,
+        validator_index: u64,
+        validator_pubkey: &PublicKeyBytes,
+    ) -> Result<SyncCommitteeMessage, Error> {
+        let epoch = slot.epoch(E::slots_per_epoch());
+        let cluster = self.cluster(*validator_pubkey)?;
+        let beacon_block_root = vote.block_root;
+
+        let completed = self
+            .qbft_manager
+            .decide_instance(
+                CommitteeInstanceId {
+                    committee: cluster.cluster_id,
+                    instance_height: slot.as_usize().into(),
+                },
+                vote,
+                &cluster,
+            )
+            .await
+            .map_err(SpecificError::from)?;
+        let data = match completed {
+            Completed::TimedOut => return Err(Error::SpecificError(SpecificError::Timeout)),
+            Completed::Success(data) => data,
+        };
+
+        let domain = self.get_domain(epoch, Domain::SyncCommittee);
+        let signing_root = data.block_root.signing_root(domain);
+        let signature = self
+            .collect_signature(*validator_pubkey, signing_root)
+            .await?;
+
+        Ok(SyncCommitteeMessage {
+            slot,
+            beacon_block_root,
+            validator_index,
+            signature,
+        })
+    }
+
+    pub async fn produce_signed_contribution_and_proofs(
+        &self,
+        aggregator_index: u64,
+        aggregator_pubkey: PublicKeyBytes,
+        signing_data: Vec<ContributionAndProofSigningData<E>>,
+    ) -> Vec<Result<SignedContributionAndProof<E>, Error>> {
+        let error = |err: Error| signing_data.iter().map(move |_| Err(err.clone())).collect();
+
+        let Some(slot) = signing_data.first().map(|data| data.contribution.slot) else {
+            return vec![];
+        };
+        let epoch = slot.epoch(E::slots_per_epoch());
+        let cluster = match self.cluster(aggregator_pubkey) {
+            Ok(cluster) => cluster,
+            Err(err) => return error(err),
+        };
+
+        let data = match VariableList::new(
+            signing_data
+                .iter()
+                .map(|signing_data| Contribution {
+                    selection_proof_sig: signing_data.selection_proof.clone().into(),
+                    contribution: signing_data.contribution.clone(),
+                })
+                .collect(),
+        ) {
+            Ok(data) => data,
+            Err(_) => return error(SpecificError::TooManySyncSubnetsToSign.into()),
+        };
+
+        let completed = self
+            .qbft_manager
+            .decide_instance(
+                ValidatorInstanceId {
+                    validator: aggregator_pubkey,
+                    duty: ValidatorDutyKind::SyncCommitteeAggregator,
+                    instance_height: slot.as_usize().into(),
+                },
+                ValidatorConsensusData {
+                    duty: ValidatorDuty {
+                        r#type: BEACON_ROLE_SYNC_COMMITTEE_CONTRIBUTION,
+                        pub_key: aggregator_pubkey,
+                        slot,
+                        validator_index: cluster.validator_metadata.validator_index,
+                        committee_index: 0,
+                        committee_length: 0,
+                        committees_at_slot: 0,
+                        validator_committee_index: aggregator_index,
+                        validator_sync_committee_indices: Default::default(),
+                    },
+                    version: DATA_VERSION_PHASE0,
+                    data_ssz: Box::new(DataSsz::Contributions(data)),
+                },
+                &cluster,
+            )
+            .await;
+        let data = match completed {
+            Ok(Completed::Success(data)) => data,
+            Ok(Completed::TimedOut) => return error(SpecificError::Timeout.into()),
+            Err(err) => return error(SpecificError::QbftError(err).into()),
+        };
+        let data = match *data.data_ssz {
+            DataSsz::Contributions(data) => data,
+            _ => return error(SpecificError::InvalidQbftData.into()),
+        };
+
+        let domain_hash = self.get_domain(epoch, Domain::ContributionAndProof);
+        let signing_futures = data
+            .into_iter()
+            .map(|contribution| async move {
+                let message = ContributionAndProof {
+                    aggregator_index,
+                    contribution: contribution.contribution,
+                    selection_proof: contribution.selection_proof_sig,
+                };
+                let signing_root = message.signing_root(domain_hash);
+                self.collect_signature(aggregator_pubkey, signing_root)
+                    .await
+                    .map(|signature| SignedContributionAndProof { message, signature })
+            })
+            .collect::<Vec<_>>();
+
+        join_all(signing_futures).await
+    }
 }
 
-#[derive(Debug)]
+pub struct ContributionAndProofSigningData<E: EthSpec> {
+    contribution: SyncCommitteeContribution<E>,
+    selection_proof: SyncSelectionProof,
+}
+
+#[derive(Debug, Clone)]
 pub enum SpecificError {
-    ExitsUnsupported,
+    Unsupported,
     SignatureCollectionFailed(CollectionError),
     ArithError(ArithError),
     QbftError(QbftError),
     Timeout,
     InvalidQbftData,
+    TooManySyncSubnetsToSign,
 }
 
 impl From<CollectionError> for SpecificError {
@@ -354,7 +491,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         _voluntary_exit: VoluntaryExit,
     ) -> Result<SignedVoluntaryExit, Error> {
         // there should be no situation ever where we want to sign an exit
-        Err(Error::SpecificError(SpecificError::ExitsUnsupported))
+        Err(Error::SpecificError(SpecificError::Unsupported))
     }
 
     async fn sign_validator_registration_data(
@@ -425,8 +562,8 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
             _ => return Err(Error::SpecificError(SpecificError::InvalidQbftData)),
         };
 
-        let signing_context = self.get_domain(signing_epoch, Domain::AggregateAndProof);
-        let signing_root = message.signing_root(signing_context);
+        let domain_hash = self.get_domain(signing_epoch, Domain::AggregateAndProof);
+        let signing_root = message.signing_root(domain_hash);
         let signature = self
             .collect_signature(validator_pubkey, signing_root)
             .await?;
@@ -471,41 +608,13 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
 
     async fn produce_sync_committee_signature(
         &self,
-        slot: Slot,
-        beacon_block_root: Hash256,
+        _slot: Slot,
+        _beacon_block_root: Hash256,
         _validator_index: u64,
-        validator_pubkey: &PublicKeyBytes,
+        _validator_pubkey: &PublicKeyBytes,
     ) -> Result<SyncCommitteeMessage, Error> {
-        let cluster = self.cluster(*validator_pubkey)?;
-
-        let completed = self
-            .qbft_manager
-            .decide_instance(
-                CommitteeInstanceId {
-                    committee: cluster.cluster_id,
-                    instance_height: slot.as_usize().into(),
-                },
-                BeaconVote {
-                    block_root: beacon_block_root,
-                    // todo noooo. where do we get those here?
-                    // -> actively fetch is possibly inefficient
-                    // -> cant wait for sign_attestation, as that might not be called
-                    //      -> with timeout?... eh
-                    // -> modifying interface should be ruled out
-                    // -> modified sync_committee_service? that always triggers an attestation
-                    // -> modified attestation_service? that submits the attestation data every slot?
-                    source: Checkpoint::default(),
-                    target: Checkpoint::default(),
-                },
-                &cluster,
-            )
-            .await
-            .map_err(SpecificError::from)?;
-        let _data = match completed {
-            Completed::TimedOut => return Err(Error::SpecificError(SpecificError::Timeout)),
-            Completed::Success(data) => data,
-        };
-        todo!()
+        // use `produce_sync_committee_signature_with_full_vote` instead
+        Err(Error::SpecificError(SpecificError::Unsupported))
     }
 
     async fn produce_signed_contribution_and_proof(
@@ -515,9 +624,8 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         _contribution: SyncCommitteeContribution<E>,
         _selection_proof: SyncSelectionProof,
     ) -> Result<SignedContributionAndProof<E>, Error> {
-        // todo: ah, we need to vote for all subnets at once here -> shift interface ton one call
-        // for all contributions
-        todo!()
+        // use `produce_signed_contribution_and_proofs` instead
+        Err(Error::SpecificError(SpecificError::Unsupported))
     }
 
     fn prune_slashing_protection_db(&self, _current_epoch: Epoch, _first_run: bool) {

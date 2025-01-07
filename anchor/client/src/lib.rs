@@ -3,6 +3,7 @@
 mod cli;
 pub mod config;
 
+use anchor_validator_store::sync_committee_service::SyncCommitteeService;
 use anchor_validator_store::AnchorValidatorStore;
 use beacon_node_fallback::{
     start_fallback_updater_service, ApiTopic, BeaconNodeFallback, CandidateBeaconNode,
@@ -37,7 +38,6 @@ use validator_services::block_service::BlockServiceBuilder;
 use validator_services::duties_service;
 use validator_services::duties_service::DutiesServiceBuilder;
 use validator_services::preparation_service::PreparationServiceBuilder;
-use validator_services::sync_committee_service::SyncCommitteeService;
 
 /// The time between polls when waiting for genesis.
 const WAITING_FOR_GENESIS_POLL_TIME: Duration = Duration::from_secs(12);

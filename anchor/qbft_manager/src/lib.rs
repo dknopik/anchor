@@ -356,7 +356,7 @@ async fn qbft_instance<D: qbft::Data>(mut rx: UnboundedReceiver<QbftMessage<D>>)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum QbftError {
     QueueClosedError,
     QueueFullError,

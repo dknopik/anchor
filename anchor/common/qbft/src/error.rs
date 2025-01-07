@@ -1,5 +1,5 @@
 /// Error associated with Config building.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConfigBuilderError {
     /// Quorum size too small
     QuorumSizeTooSmall,
