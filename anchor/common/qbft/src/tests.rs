@@ -23,13 +23,15 @@ struct TestQBFTCommitteeBuilder {
 
 impl Default for TestQBFTCommitteeBuilder {
     fn default() -> Self {
-        let config = Config::<DefaultLeaderFunction> {
-            // Populate the committee members
-            committee_members: (0..5).map(OperatorId::from).collect(),
-            ..Default::default()
-        };
+        let mut builder = ConfigBuilder::default();
+        builder
+            .operator_id(OperatorId(0))
+            .committee_members((0..5).map(OperatorId::from).collect())
+            .instance_height(InstanceHeight::default());
 
-        TestQBFTCommitteeBuilder { config }
+        TestQBFTCommitteeBuilder {
+            config: builder.build().expect("test config should be valid"),
+        }
     }
 }
 

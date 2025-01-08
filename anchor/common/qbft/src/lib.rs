@@ -109,16 +109,6 @@ where
         self.config.operator_id
     }
 
-    /// Obtains the maximum number of faulty nodes that this consensus can tolerate
-    fn get_f(&self) -> usize {
-        let f = (self.config.committee_members.len() - 1) % 3;
-        if f > 0 {
-            f
-        } else {
-            1
-        }
-    }
-
     /// Once we have achieved consensus on a PREPARE round, we add the data to mapping to match
     /// against later.
     fn insert_consensus(&mut self, round: Round, data: D::Hash) {
@@ -524,7 +514,7 @@ where
                 // 1. If we have reached a quorum for this round, advance to that round.
                 debug!(operator_id = ?self.operator_id(), round = *round, "Round change quorum reached");
                 self.set_round(round);
-            } else if new_round_messages.len() > self.get_f()
+            } else if new_round_messages.len() > self.config.get_f()
                 && !(matches!(self.state, InstanceState::SentRoundChange))
             {
                 // 2. We have seen 2f + 1 messtages for this round.

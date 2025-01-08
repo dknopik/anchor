@@ -43,6 +43,7 @@ pub struct Round(NonZeroUsize);
 
 impl Default for Round {
     fn default() -> Self {
+        // rounds are indexed starting at 1
         Round(NonZeroUsize::new(1).expect("1 != 0"))
     }
 }
