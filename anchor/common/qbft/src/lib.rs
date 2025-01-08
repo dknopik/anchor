@@ -199,7 +199,6 @@ where
             };
             if let Some(data) = self.data.get(&hash).cloned() {
                 self.send_proposal(data);
-                self.send_prepare(hash.clone());
             } else {
                 error!("Unable to find data for known hash")
             }
