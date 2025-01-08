@@ -82,7 +82,7 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
     ) -> Result<Arc<Self>, QbftError> {
         let manager = Arc::new(QbftManager {
             processor,
-            operator_id: QbftOperatorId(operator_id.0 as usize),
+            operator_id: (*operator_id as usize).into(),
             slot_clock,
             validator_consensus_data_instances: DashMap::new(),
             beacon_vote_instances: DashMap::new(),
@@ -111,7 +111,7 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
                 committee
                     .cluster_members
                     .iter()
-                    .map(|m| QbftOperatorId(m.operator_id.0 as usize))
+                    .map(|&m| (*m as usize).into())
                     .collect(),
             );
         let config = initial.config(&mut config, &id)?;
@@ -163,7 +163,7 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
             };
             let cutoff = slot.saturating_sub(QBFT_RETAIN_SLOTS);
             self.beacon_vote_instances
-                .retain(|k, _| k.instance_height.0 >= cutoff.as_usize())
+                .retain(|k, _| *k.instance_height >= cutoff.as_usize())
         }
     }
 }

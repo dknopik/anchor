@@ -62,12 +62,12 @@ impl Round {
 
 /// The operator that is participating in the consensus instance.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, From, Deref)]
-pub struct OperatorId(pub usize);
+pub struct OperatorId(usize);
 
 /// The instance height behaves like an "ID" for the QBFT instance. It is used to uniquely identify
 /// different instances, that have the same operator id.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, From, Deref)]
-pub struct InstanceHeight(pub usize);
+pub struct InstanceHeight(usize);
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]

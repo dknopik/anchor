@@ -25,7 +25,7 @@ impl Default for TestQBFTCommitteeBuilder {
     fn default() -> Self {
         let mut builder = ConfigBuilder::default();
         builder
-            .operator_id(OperatorId(0))
+            .operator_id(0.into())
             .committee_members((0..5).map(OperatorId::from).collect())
             .instance_height(InstanceHeight::default());
 
@@ -112,7 +112,7 @@ impl<D: Default + Data, S: FnMut(Message<D>)> TestQBFTCommittee<D, S> {
             for instance in self
                 .instances
                 .iter_mut()
-                .filter_map(|(id, instance)| (id.0 != sender.0).then_some(instance))
+                .filter_map(|(id, instance)| (id != &sender).then_some(instance))
             {
                 instance.receive(msg.clone());
             }
