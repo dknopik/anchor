@@ -123,7 +123,7 @@ dependencies = [
  "proptest-derive",
  "rand",
  "ruint",
- "rustc-hash 2.1.0",
+ "rustc-hash",
  "serde",
  "sha3",
  "tiny-keccak",
@@ -178,11 +178,12 @@ dependencies = [
  "dashmap",
  "eth2",
  "futures",
- "processor",
+ "parking_lot",
  "qbft",
  "qbft_manager",
  "safe_arith",
  "signature_collector",
+ "slashing_protection",
  "slot_clock",
  "ssv_types",
  "task_executor",
@@ -493,7 +494,7 @@ dependencies = [
  "futures-lite",
  "parking",
  "polling",
- "rustix 0.38.42",
+ "rustix 0.38.43",
  "slab",
  "tracing",
  "windows-sys 0.59.0",
@@ -505,7 +506,7 @@ version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff6e472cdea888a4bd64f342f09b3f50e1886d32afe8df3d663c01140b811b18"
 dependencies = [
- "event-listener 5.3.1",
+ "event-listener 5.4.0",
  "event-listener-strategy",
  "pin-project-lite",
 ]
@@ -671,7 +672,7 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "beacon_node_fallback"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "eth2",
  "futures",
@@ -684,29 +685,6 @@ dependencies = [
  "tracing",
  "types",
  "validator_metrics",
-]
-
-[[package]]
-name = "bindgen"
-version = "0.69.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "271383c67ccabffb7381723dea0672a673f292304fcb45c01cc648c7a8d58088"
-dependencies = [
- "bitflags 2.6.0",
- "cexpr",
- "clang-sys",
- "itertools 0.12.1",
- "lazy_static",
- "lazycell",
- "log",
- "prettyplease",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash 1.1.0",
- "shlex",
- "syn 2.0.95",
- "which",
 ]
 
 [[package]]
@@ -778,7 +756,7 @@ dependencies = [
 [[package]]
 name = "bls"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "alloy-primitives",
  "arbitrary",
@@ -905,15 +883,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cexpr"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fac387a98bb7c37292057cffc56d62ecb629900026402633ae9160df93a8766"
-dependencies = [
- "nom",
-]
-
-[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -982,17 +951,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clang-sys"
-version = "1.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b023947811758c97c59bf9d1c188fd619ad4718dcaa767947df1cadb14f39f4"
-dependencies = [
- "glob",
- "libc",
- "libloading",
-]
-
-[[package]]
 name = "clap"
 version = "4.5.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1036,7 +994,7 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 [[package]]
 name = "clap_utils"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "alloy-primitives",
  "clap",
@@ -1072,6 +1030,7 @@ dependencies = [
  "sensitive_url",
  "serde",
  "signature_collector",
+ "slashing_protection",
  "slot_clock",
  "ssv_types",
  "strum",
@@ -1086,15 +1045,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cmake"
-version = "0.1.52"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c682c223677e0e5b6b7f63a64b9351844c3f1b1678a68b7ee617e30fb082620e"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1103,7 +1053,7 @@ checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 [[package]]
 name = "compare_fields"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "itertools 0.10.5",
 ]
@@ -1111,7 +1061,7 @@ dependencies = [
 [[package]]
 name = "compare_fields_derive"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -1520,12 +1470,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "db-key"
-version = "0.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b72465f46d518f6015d9cf07f7f3013a95dd6b9c2747c3d65ae0cce43929d14f"
-
-[[package]]
 name = "delay_map"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1649,7 +1593,7 @@ dependencies = [
 [[package]]
 name = "directory"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "clap",
  "clap_utils",
@@ -1901,17 +1845,19 @@ dependencies = [
 [[package]]
 name = "eth2"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "derivative",
+ "enr",
  "eth2_keystore",
  "ethereum_serde_utils",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "futures",
  "futures-util",
- "lighthouse_network",
+ "libp2p-identity",
  "mediatype",
+ "multiaddr",
  "pretty_reqwest_error",
  "procfs",
  "proto_array",
@@ -1923,7 +1869,6 @@ dependencies = [
  "serde_json",
  "slashing_protection",
  "ssz_types",
- "store",
  "types",
  "zeroize",
 ]
@@ -1931,7 +1876,7 @@ dependencies = [
 [[package]]
 name = "eth2_config"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "paste",
  "types",
@@ -1940,7 +1885,7 @@ dependencies = [
 [[package]]
 name = "eth2_interop_keypairs"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "bls",
  "ethereum_hashing",
@@ -1953,7 +1898,7 @@ dependencies = [
 [[package]]
 name = "eth2_key_derivation"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "bls",
  "num-bigint-dig",
@@ -1965,7 +1910,7 @@ dependencies = [
 [[package]]
 name = "eth2_keystore"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "aes 0.7.5",
  "bls",
@@ -1987,7 +1932,7 @@ dependencies = [
 [[package]]
 name = "eth2_network_config"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "bytes",
  "discv5",
@@ -2060,9 +2005,9 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "event-listener"
-version = "5.3.1"
+version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6032be9bd27023a771701cc49f9f053c751055f71efb2e0ae5c15809093675ba"
+checksum = "3492acde4c3fc54c845eaab3eed8bd00c7a7d881f78bfc801e43a93dec1331ae"
 dependencies = [
  "concurrent-queue",
  "parking",
@@ -2075,7 +2020,7 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c3e4e0dd3673c1139bf041f3008816d9cf2946bbfac2945c09e523b8d7b05b2"
 dependencies = [
- "event-listener 5.3.1",
+ "event-listener 5.4.0",
  "pin-project-lite",
 ]
 
@@ -2152,12 +2097,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ffi-opaque"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec54ac60a7f2ee9a97cad9946f9bf629a3bc6a7ae59e68983dc9318f5a54b81a"
-
-[[package]]
 name = "fiat-crypto"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2176,7 +2115,7 @@ dependencies = [
 [[package]]
 name = "filesystem"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "winapi",
  "windows-acl",
@@ -2197,7 +2136,7 @@ dependencies = [
 [[package]]
 name = "fixed_bytes"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "alloy-primitives",
  "safe_arith",
@@ -2462,7 +2401,7 @@ checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 [[package]]
 name = "gossipsub"
 version = "0.5.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "async-channel",
  "asynchronous-codec",
@@ -2491,7 +2430,7 @@ dependencies = [
 [[package]]
 name = "graffiti_file"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "bls",
  "serde",
@@ -2703,15 +2642,6 @@ dependencies = [
  "digest 0.9.0",
  "generic-array",
  "hmac 0.8.1",
-]
-
-[[package]]
-name = "home"
-version = "0.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "589533453244b0995c858700322199b2becb13b627df2851f64a2775d024abcf"
-dependencies = [
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3178,18 +3108,9 @@ dependencies = [
 [[package]]
 name = "int_to_bytes"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "bytes",
-]
-
-[[package]]
-name = "integer-sqrt"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "276ec31bcb4a9ee45f58bec6f9ec700ae4cf4f4f8f2fa7e06cb406bd5ffdd770"
-dependencies = [
- "num-traits",
 ]
 
 [[package]]
@@ -3243,15 +3164,6 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -3326,7 +3238,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "arbitrary",
  "c-kzg",
@@ -3349,35 +3261,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
  "spin 0.9.8",
-]
-
-[[package]]
-name = "lazycell"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
-
-[[package]]
-name = "leveldb"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32651baaaa5596b3a6e0bee625e73fd0334c167db0ea5ac68750ef9a629a2d6a"
-dependencies = [
- "db-key",
- "leveldb-sys",
- "libc",
-]
-
-[[package]]
-name = "leveldb-sys"
-version = "2.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dd94a4d0242a437e5e41a27c782b69a624469ca1c4d1e5cb3c337f74a8031d4"
-dependencies = [
- "cmake",
- "ffi-opaque",
- "libc",
- "num_cpus",
 ]
 
 [[package]]
@@ -3408,16 +3291,6 @@ dependencies = [
  "core2",
  "hashbrown 0.14.5",
  "rle-decode-fast",
-]
-
-[[package]]
-name = "libloading"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
-dependencies = [
- "cfg-if",
- "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -3921,7 +3794,7 @@ dependencies = [
 [[package]]
 name = "lighthouse_network"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -3931,6 +3804,7 @@ dependencies = [
  "dirs 3.0.2",
  "discv5",
  "either",
+ "eth2",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "fnv",
@@ -3970,7 +3844,7 @@ dependencies = [
 [[package]]
 name = "lighthouse_version"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "git-version",
  "target_info",
@@ -3990,9 +3864,9 @@ checksum = "f051f77a7c8e6957c0696eac88f26b0117e54f52d3fc682ab19397a8812846a4"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.4.14"
+version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
+checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
 
 [[package]]
 name = "litemap"
@@ -4019,7 +3893,7 @@ checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 [[package]]
 name = "logging"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "chrono",
  "metrics",
@@ -4059,7 +3933,7 @@ dependencies = [
 [[package]]
 name = "lru_cache"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "fnv",
 ]
@@ -4124,7 +3998,7 @@ dependencies = [
 [[package]]
 name = "merkle_proof"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "alloy-primitives",
  "ethereum_hashing",
@@ -4158,7 +4032,7 @@ dependencies = [
 [[package]]
 name = "metrics"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "prometheus",
 ]
@@ -4742,7 +4616,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b7cafe60d6cf8e62e1b9b2ea516a089c008945bb5a275416789e7db0bc199dc"
 dependencies = [
  "memchr",
- "thiserror 2.0.9",
+ "thiserror 2.0.10",
  "ucd-trie",
 ]
 
@@ -4810,7 +4684,7 @@ dependencies = [
  "concurrent-queue",
  "hermit-abi 0.4.0",
  "pin-project-lite",
- "rustix 0.38.42",
+ "rustix 0.38.43",
  "tracing",
  "windows-sys 0.59.0",
 ]
@@ -4856,20 +4730,10 @@ dependencies = [
 [[package]]
 name = "pretty_reqwest_error"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "reqwest",
  "sensitive_url",
-]
-
-[[package]]
-name = "prettyplease"
-version = "0.2.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "483f8c21f64f3ea09fe0f30f5d48c3e8eefe5dac9129f0075f76593b4c1da705"
-dependencies = [
- "proc-macro2",
- "syn 2.0.95",
 ]
 
 [[package]]
@@ -5011,7 +4875,7 @@ dependencies = [
 [[package]]
 name = "proto_array"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "ethereum_ssz",
  "ethereum_ssz_derive",
@@ -5109,10 +4973,10 @@ dependencies = [
  "pin-project-lite",
  "quinn-proto",
  "quinn-udp",
- "rustc-hash 2.1.0",
+ "rustc-hash",
  "rustls 0.23.20",
  "socket2",
- "thiserror 2.0.9",
+ "thiserror 2.0.10",
  "tokio",
  "tracing",
 ]
@@ -5127,11 +4991,11 @@ dependencies = [
  "getrandom",
  "rand",
  "ring 0.17.8",
- "rustc-hash 2.1.0",
+ "rustc-hash",
  "rustls 0.23.20",
  "rustls-pki-types",
  "slab",
- "thiserror 2.0.9",
+ "thiserror 2.0.10",
  "tinyvec",
  "tracing",
  "web-time",
@@ -5547,12 +5411,6 @@ checksum = "719b953e2095829ee67db738b3bfa9fa368c94900df327b3f07fe6e794d2fe1f"
 
 [[package]]
 name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
-name = "rustc-hash"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7fb8039b3032c191086b10f11f319a6e99e1e82889c5cc6046f515c9db1d497"
@@ -5606,14 +5464,14 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.38.42"
+version = "0.38.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f93dc38ecbab2eb790ff964bb77fa94faf256fd3e73285fd7ba0903b76bedb85"
+checksum = "a78891ee6bf2340288408954ac787aa063d8e8817e9f53abb37c695c6d834ef6"
 dependencies = [
  "bitflags 2.6.0",
  "errno",
  "libc",
- "linux-raw-sys 0.4.14",
+ "linux-raw-sys 0.4.15",
  "windows-sys 0.59.0",
 ]
 
@@ -5720,7 +5578,7 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 [[package]]
 name = "safe_arith"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 
 [[package]]
 name = "salsa20"
@@ -5841,7 +5699,7 @@ dependencies = [
 [[package]]
 name = "sensitive_url"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "serde",
  "url",
@@ -6038,7 +5896,7 @@ dependencies = [
 [[package]]
 name = "slashing_protection"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "arbitrary",
  "ethereum_serde_utils",
@@ -6157,7 +6015,7 @@ dependencies = [
 [[package]]
 name = "slot_clock"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "metrics",
  "parking_lot",
@@ -6266,65 +6124,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
-name = "state_processing"
-version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
-dependencies = [
- "arbitrary",
- "bls",
- "derivative",
- "ethereum_hashing",
- "ethereum_ssz",
- "ethereum_ssz_derive",
- "int_to_bytes",
- "integer-sqrt",
- "itertools 0.10.5",
- "merkle_proof",
- "metrics",
- "rand",
- "rayon",
- "safe_arith",
- "smallvec",
- "ssz_types",
- "test_random_derive",
- "tree_hash",
- "types",
-]
-
-[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "store"
-version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
-dependencies = [
- "bls",
- "db-key",
- "directory",
- "ethereum_ssz",
- "ethereum_ssz_derive",
- "itertools 0.10.5",
- "leveldb",
- "logging",
- "lru",
- "metrics",
- "parking_lot",
- "safe_arith",
- "serde",
- "slog",
- "sloggers",
- "smallvec",
- "state_processing",
- "strum",
- "superstruct",
- "types",
- "xdelta3",
- "zstd 0.13.2",
-]
 
 [[package]]
 name = "strsim"
@@ -6383,7 +6186,7 @@ dependencies = [
 [[package]]
 name = "swap_or_not_shuffle"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "alloy-primitives",
  "ethereum_hashing",
@@ -6498,7 +6301,7 @@ checksum = "c63f48baada5c52e65a29eef93ab4f8982681b67f9e8d29c7b05abcfec2b9ffe"
 [[package]]
 name = "task_executor"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "async-channel",
  "futures",
@@ -6520,7 +6323,7 @@ dependencies = [
  "fastrand",
  "getrandom",
  "once_cell",
- "rustix 0.38.42",
+ "rustix 0.38.43",
  "windows-sys 0.59.0",
 ]
 
@@ -6541,14 +6344,14 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5352447f921fda68cf61b4101566c0bdb5104eff6804d0678e5227580ab6a4e9"
 dependencies = [
- "rustix 0.38.42",
+ "rustix 0.38.43",
  "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "test_random_derive"
 version = "0.2.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -6565,11 +6368,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.9"
+version = "2.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f072643fd0190df67a8bab670c20ef5d8737177d6ac6b2e9a236cb096206b2cc"
+checksum = "a3ac7f54ca534db81081ef1c1e7f6ea8a3ef428d2fc069097c079443d24124d3"
 dependencies = [
- "thiserror-impl 2.0.9",
+ "thiserror-impl 2.0.10",
 ]
 
 [[package]]
@@ -6585,9 +6388,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.9"
+version = "2.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b50fa271071aae2e6ee85f842e2e28ba8cd2c5fb67f11fcb1fd70b276f9e7d4"
+checksum = "9e9465d30713b56a37ede7185763c3492a91be2f5fa68d958c44e41ab9248beb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6680,9 +6483,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.42.0"
+version = "1.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cec9b21b0450273377fc97bd4c33a8acffc8c996c987a7c5b319a0083707551"
+checksum = "3d61fa4ffa3de412bfea335c6ecff681de2b609ba3c77ef3e00e521813a9ed9e"
 dependencies = [
  "backtrace",
  "bytes",
@@ -6707,9 +6510,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "2.4.0"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "693d596312e88961bc67d7f1f97af8a70227d9f90c31bba5806eec004978d752"
+checksum = "6e06d43f1345a3bcd39f6a56dbb7dcab2ba47e68e8ac134855e7e2bdbaf8cab8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6951,7 +6754,7 @@ checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
 [[package]]
 name = "types"
 version = "0.2.1"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -7114,7 +6917,7 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 [[package]]
 name = "unused_port"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "lru_cache",
  "parking_lot",
@@ -7162,7 +6965,7 @@ dependencies = [
 [[package]]
 name = "validator_metrics"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "metrics",
 ]
@@ -7170,7 +6973,7 @@ dependencies = [
 [[package]]
 name = "validator_services"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "beacon_node_fallback",
  "bls",
@@ -7193,7 +6996,7 @@ dependencies = [
 [[package]]
 name = "validator_store"
 version = "0.1.0"
-source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#4510b736581431aedc8719b0fa983d75c9f62da4"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#6ad04b0075cb91e9f618254eb896cb07b485c4ac"
 dependencies = [
  "slashing_protection",
  "types",
@@ -7367,18 +7170,6 @@ name = "webpki-roots"
 version = "0.25.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f20c57d8d7db6d3b86154206ae5d8fba62dd39573114de97c2cb0578251f8e1"
-
-[[package]]
-name = "which"
-version = "4.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87ba24419a2078cd2b0f2ede2691b6c66d8e47836da3b6db8265ebad47afbfc7"
-dependencies = [
- "either",
- "home",
- "once_cell",
- "rustix 0.38.42",
-]
 
 [[package]]
 name = "widestring"
@@ -7748,24 +7539,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "xdelta3"
-version = "0.1.5"
-source = "git+http://github.com/sigp/xdelta3-rs?rev=50d63cdf1878e5cf3538e9aae5eed34a22c64e4a#50d63cdf1878e5cf3538e9aae5eed34a22c64e4a"
-dependencies = [
- "bindgen",
- "cc",
- "futures-io",
- "futures-util",
- "libc",
- "log",
- "rand",
-]
-
-[[package]]
 name = "xml-rs"
-version = "0.8.24"
+version = "0.8.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea8b391c9a790b496184c29f7f93b9ed5b16abb306c05415b68bcc16e4d06432"
+checksum = "c5b940ebc25896e71dd073bad2dbaa2abfe97b0a391415e22ad1326d9c54e3c4"
 
 [[package]]
 name = "xmltree"
@@ -7942,7 +7719,7 @@ dependencies = [
  "pbkdf2 0.11.0",
  "sha1",
  "time",
- "zstd 0.11.2+zstd.1.5.2",
+ "zstd",
 ]
 
 [[package]]
@@ -7951,16 +7728,7 @@ version = "0.11.2+zstd.1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20cc960326ece64f010d2d2107537f26dc589a6573a316bd5b1dba685fa5fde4"
 dependencies = [
- "zstd-safe 5.0.2+zstd.1.5.2",
-]
-
-[[package]]
-name = "zstd"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcf2b778a664581e31e389454a7072dab1647606d44f7feea22cd5abb9c9f3f9"
-dependencies = [
- "zstd-safe 7.2.1",
+ "zstd-safe",
 ]
 
 [[package]]
@@ -7970,15 +7738,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d2a5585e04f9eea4b2a3d1eca508c4dee9592a89ef6f450c11719da0726f4db"
 dependencies = [
  "libc",
- "zstd-sys",
-]
-
-[[package]]
-name = "zstd-safe"
-version = "7.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54a3ab4db68cea366acc5c897c7b4d4d1b8994a9cd6e6f841f8964566a419059"
-dependencies = [
  "zstd-sys",
 ]
 

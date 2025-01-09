@@ -10,11 +10,12 @@ beacon_node_fallback = { workspace = true }
 dashmap = { workspace = true }
 eth2 = { workspace = true }
 futures = "0.3.31"
-processor = { workspace = true }
+parking_lot = { workspace = true }
 qbft = { workspace = true }
 qbft_manager = { workspace = true }
 safe_arith = { workspace = true }
 signature_collector = { workspace = true }
+slashing_protection = { workspace = true }
 slot_clock = { workspace = true }
 ssv_types = { workspace = true }
 task_executor = { workspace = true }

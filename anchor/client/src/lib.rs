@@ -18,6 +18,7 @@ use parking_lot::RwLock;
 use qbft_manager::QbftManager;
 use sensitive_url::SensitiveUrl;
 use signature_collector::SignatureCollectorManager;
+use slashing_protection::SlashingDatabase;
 use slot_clock::{SlotClock, SystemTimeSlotClock};
 use ssv_types::OperatorId;
 use std::fs::File;
@@ -38,6 +39,9 @@ use validator_services::block_service::BlockServiceBuilder;
 use validator_services::duties_service;
 use validator_services::duties_service::DutiesServiceBuilder;
 use validator_services::preparation_service::PreparationServiceBuilder;
+
+/// The filename within the `validators` directory that contains the slashing protection DB.
+const SLASHING_PROTECTION_FILENAME: &str = "slashing_protection.sqlite";
 
 /// The time between polls when waiting for genesis.
 const WAITING_FOR_GENESIS_POLL_TIME: Duration = Duration::from_secs(12);
@@ -121,6 +125,16 @@ impl Client {
         let network = Network::try_new(&config.network, executor.clone()).await?;
         // Spawn the network listening task
         executor.spawn(network.run(), "network");
+
+        // Initialize slashing protection.
+        let slashing_db_path = config.data_dir.join(SLASHING_PROTECTION_FILENAME);
+        let slashing_protection =
+            SlashingDatabase::open_or_create(&slashing_db_path).map_err(|e| {
+                format!(
+                    "Failed to open or create slashing protection database: {:?}",
+                    e
+                )
+            })?;
 
         let last_beacon_node_index = config
             .beacon_nodes
@@ -276,9 +290,9 @@ impl Client {
         };
 
         let validator_store = Arc::new(AnchorValidatorStore::<_, E>::new(
-            processor_senders,
             signature_collector,
             qbft_manager,
+            slashing_protection,
             spec.clone(),
             genesis_validators_root,
             OperatorId(123),

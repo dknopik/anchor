@@ -2,12 +2,14 @@ pub mod sync_committee_service;
 
 use dashmap::DashMap;
 use futures::future::join_all;
+use parking_lot::Mutex;
 use qbft::Completed;
 use qbft_manager::{
     CommitteeInstanceId, QbftError, QbftManager, ValidatorDutyKind, ValidatorInstanceId,
 };
 use safe_arith::{ArithError, SafeArith};
 use signature_collector::{CollectionError, SignatureCollectorManager, SignatureRequest};
+use slashing_protection::{NotSafe, Safe, SlashingDatabase};
 use slot_clock::SlotClock;
 use ssv_types::message::{
     BeaconVote, Contribution, DataSsz, ValidatorConsensusData, ValidatorDuty,
@@ -16,8 +18,9 @@ use ssv_types::message::{
     DATA_VERSION_PHASE0, DATA_VERSION_UNKNOWN,
 };
 use ssv_types::{Cluster, OperatorId};
+use std::fmt::Debug;
 use std::sync::Arc;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use types::attestation::Attestation;
 use types::beacon_block::BeaconBlock;
 use types::graffiti::Graffiti;
@@ -36,13 +39,19 @@ use types::validator_registration_data::{
 };
 use types::voluntary_exit::VoluntaryExit;
 use types::{
-    AbstractExecPayload, Address, AggregateAndProof, BlindedPayload, ChainSpec,
-    ContributionAndProof, Domain, EthSpec, FullPayload, Hash256, PublicKeyBytes, SecretKey,
-    Signature, SignedRoot, SyncAggregatorSelectionData, VariableList,
+    AbstractExecPayload, Address, AggregateAndProof, ChainSpec, ContributionAndProof, Domain,
+    EthSpec, Hash256, PublicKeyBytes, SecretKey, Signature, SignedRoot,
+    SyncAggregatorSelectionData, VariableList,
 };
 use validator_store::{
-    DoppelgangerStatus, Error as ValidatorStoreError, ProposalData, SignBlock, ValidatorStore,
+    DoppelgangerStatus, Error as ValidatorStoreError, ProposalData, SignedBlock, UnsignedBlock,
+    ValidatorStore,
 };
+
+/// Number of epochs of slashing protection history to keep.
+///
+/// This acts as a maximum safe-guard against clock drift.
+const SLASHING_PROTECTION_HISTORY_EPOCHS: u64 = 512;
 
 struct InitializedCluster {
     pub cluster: Cluster,
@@ -53,6 +62,8 @@ pub struct AnchorValidatorStore<T: SlotClock + 'static, E: EthSpec> {
     clusters: DashMap<PublicKeyBytes, InitializedCluster>,
     signature_collector: Arc<SignatureCollectorManager>,
     qbft_manager: Arc<QbftManager<T, E>>,
+    slashing_protection: SlashingDatabase,
+    slashing_protection_last_prune: Arc<Mutex<Epoch>>,
     spec: Arc<ChainSpec>,
     genesis_validators_root: Hash256,
     operator_id: OperatorId,
@@ -60,9 +71,9 @@ pub struct AnchorValidatorStore<T: SlotClock + 'static, E: EthSpec> {
 
 impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
     pub fn new(
-        _processor: processor::Senders,
         signature_collector: Arc<SignatureCollectorManager>,
         qbft_manager: Arc<QbftManager<T, E>>,
+        slashing_protection: SlashingDatabase,
         spec: Arc<ChainSpec>,
         genesis_validators_root: Hash256,
         operator_id: OperatorId,
@@ -71,10 +82,30 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
             clusters: DashMap::new(),
             signature_collector,
             qbft_manager,
+            slashing_protection,
+            slashing_protection_last_prune: Arc::new(Mutex::new(Epoch::new(0))),
             spec,
             genesis_validators_root,
             operator_id,
         }
+    }
+
+    pub fn add_cluster(
+        &self,
+        cluster: Cluster,
+        decrypted_key_share: SecretKey,
+    ) -> Result<(), Error> {
+        let pubkey_bytes = cluster.validator_metadata.validator_pubkey.compress();
+        self.clusters.insert(
+            pubkey_bytes,
+            InitializedCluster {
+                cluster,
+                decrypted_key_share,
+            },
+        );
+        self.slashing_protection
+            .register_validator(pubkey_bytes)
+            .map_err(Error::Slashable)
     }
 
     fn cluster(&self, validator_pubkey: PublicKeyBytes) -> Result<Cluster, Error> {
@@ -122,7 +153,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
         Ok((*collector.await.map_err(SpecificError::from)?).clone())
     }
 
-    async fn sign_abstract_block<
+    async fn decide_abstract_block<
         P: AbstractExecPayload<E>,
         F: FnOnce(BeaconBlock<E, P>) -> DataSsz<E>,
     >(
@@ -144,8 +175,6 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
                 current_slot,
             });
         }
-
-        // todo slashing protection
 
         let cluster = self.cluster(validator_pubkey)?;
 
@@ -189,6 +218,31 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
             Completed::Success(data) => data,
         };
         Ok(*data.data_ssz)
+    }
+
+    async fn sign_abstract_block<P: AbstractExecPayload<E>>(
+        &self,
+        validator_pubkey: PublicKeyBytes,
+        block: BeaconBlock<E, P>,
+    ) -> Result<SignedBeaconBlock<E, P>, Error> {
+        let domain_hash = self.get_domain(block.epoch(), Domain::BeaconProposer);
+
+        let header = block.block_header();
+        handle_slashing_check_result(
+            self.slashing_protection.check_and_insert_block_proposal(
+                &validator_pubkey,
+                &header,
+                domain_hash,
+            ),
+            &header,
+            "block",
+        )?;
+
+        let signing_root = block.signing_root(domain_hash);
+        let signature = self
+            .collect_signature(validator_pubkey, signing_root)
+            .await?;
+        Ok(SignedBeaconBlock::from_block(block, signature))
     }
 
     pub async fn produce_sync_committee_signature_with_full_vote(
@@ -319,6 +373,48 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
     }
 }
 
+fn handle_slashing_check_result(
+    slashing_status: Result<Safe, NotSafe>,
+    object: impl Debug,
+    kind: &'static str,
+) -> Result<(), Error> {
+    match slashing_status {
+        // We can safely sign this attestation.
+        Ok(Safe::Valid) => Ok(()),
+        Ok(Safe::SameData) => {
+            warn!("Skipping signing of previously signed {kind}",);
+            validator_metrics::inc_counter_vec(
+                &validator_metrics::SIGNED_ATTESTATIONS_TOTAL,
+                &[validator_metrics::SAME_DATA],
+            );
+            Err(Error::SameData)
+        }
+        Err(NotSafe::UnregisteredValidator(pk)) => {
+            error!(
+                "public_key" = format!("{:?}", pk),
+                "Internal error: validator was not properly registered for slashing protection",
+            );
+            validator_metrics::inc_counter_vec(
+                &validator_metrics::SIGNED_ATTESTATIONS_TOTAL,
+                &[validator_metrics::UNREGISTERED],
+            );
+            Err(Error::Slashable(NotSafe::UnregisteredValidator(pk)))
+        }
+        Err(e) => {
+            error!(
+                "object" = format!("{:?}", object),
+                "error" = format!("{:?}", e),
+                "Not signing slashable {kind}",
+            );
+            validator_metrics::inc_counter_vec(
+                &validator_metrics::SIGNED_ATTESTATIONS_TOTAL,
+                &[validator_metrics::SLASHABLE],
+            );
+            Err(Error::Slashable(e))
+        }
+    }
+}
+
 pub struct ContributionAndProofSigningData<E: EthSpec> {
     contribution: SyncCommitteeContribution<E>,
     selection_proof: SyncSelectionProof,
@@ -429,6 +525,47 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         }
     }
 
+    async fn sign_block(
+        &self,
+        validator_pubkey: PublicKeyBytes,
+        block: UnsignedBlock<E>,
+        current_slot: Slot,
+    ) -> Result<SignedBlock<E>, Error> {
+        let data = match block {
+            UnsignedBlock::Full(block) => {
+                self.decide_abstract_block(
+                    validator_pubkey,
+                    block,
+                    current_slot,
+                    DataSsz::BeaconBlock,
+                )
+                .await
+            }
+            UnsignedBlock::Blinded(block) => {
+                self.decide_abstract_block(
+                    validator_pubkey,
+                    block,
+                    current_slot,
+                    DataSsz::BlindedBeaconBlock,
+                )
+                .await
+            }
+        }?;
+
+        // yay - we agree! let's sign the block we agreed on
+        match data {
+            DataSsz::BeaconBlock(block) => Ok(self
+                .sign_abstract_block(validator_pubkey, block)
+                .await?
+                .into()),
+            DataSsz::BlindedBeaconBlock(block) => Ok(self
+                .sign_abstract_block(validator_pubkey, block)
+                .await?
+                .into()),
+            _ => Err(Error::SpecificError(SpecificError::InvalidQbftData)),
+        }
+    }
+
     async fn sign_attestation(
         &self,
         validator_pubkey: PublicKeyBytes,
@@ -443,8 +580,6 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
                 current_epoch,
             });
         }
-
-        // todo slashing protection
 
         let cluster = self.cluster(validator_pubkey)?;
 
@@ -474,6 +609,17 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
 
         // yay - we agree! let's sign the att we agreed on
         let domain_hash = self.get_domain(current_epoch, Domain::BeaconAttester);
+
+        handle_slashing_check_result(
+            self.slashing_protection.check_and_insert_attestation(
+                &validator_pubkey,
+                attestation.data(),
+                domain_hash,
+            ),
+            attestation.data(),
+            "attestation",
+        )?;
+
         let signing_root = attestation.data().signing_root(domain_hash);
         let signature = self
             .collect_signature(validator_pubkey, signing_root)
@@ -628,8 +774,68 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         Err(Error::SpecificError(SpecificError::Unsupported))
     }
 
-    fn prune_slashing_protection_db(&self, _current_epoch: Epoch, _first_run: bool) {
-        // TODO slashing protection
+    // stolen from lighthouse
+    /// Prune the slashing protection database so that it remains performant.
+    ///
+    /// This function will only do actual pruning periodically, so it should usually be
+    /// cheap to call. The `first_run` flag can be used to print a more verbose message when pruning
+    /// runs.
+    fn prune_slashing_protection_db(&self, current_epoch: Epoch, first_run: bool) {
+        // Attempt to prune every SLASHING_PROTECTION_HISTORY_EPOCHs, with a tolerance for
+        // missing the epoch that aligns exactly.
+        let mut last_prune = self.slashing_protection_last_prune.lock();
+        if current_epoch / SLASHING_PROTECTION_HISTORY_EPOCHS
+            <= *last_prune / SLASHING_PROTECTION_HISTORY_EPOCHS
+        {
+            return;
+        }
+
+        if first_run {
+            info!(
+                "epoch" = %current_epoch,
+                "msg" = "pruning may take several minutes the first time it runs",
+                "Pruning slashing protection DB",
+            );
+        } else {
+            info!(
+                "epoch" = %current_epoch,
+                "Pruning slashing protection DB",
+            );
+        }
+
+        let _timer =
+            validator_metrics::start_timer(&validator_metrics::SLASHING_PROTECTION_PRUNE_TIMES);
+
+        let new_min_target_epoch = current_epoch.saturating_sub(SLASHING_PROTECTION_HISTORY_EPOCHS);
+        let new_min_slot = new_min_target_epoch.start_slot(E::slots_per_epoch());
+
+        let all_pubkeys: Vec<_> = self.voting_pubkeys(DoppelgangerStatus::ignored);
+
+        if let Err(e) = self
+            .slashing_protection
+            .prune_all_signed_attestations(all_pubkeys.iter(), new_min_target_epoch)
+        {
+            error!(
+                "error" = ?e,
+                "Error during pruning of signed attestations",
+            );
+            return;
+        }
+
+        if let Err(e) = self
+            .slashing_protection
+            .prune_all_signed_blocks(all_pubkeys.iter(), new_min_slot)
+        {
+            error!(
+                "error" = ?e,
+                "Error during pruning of signed blocks",
+            );
+            return;
+        }
+
+        *last_prune = current_epoch;
+
+        info!("Completed pruning of slashing protection DB");
     }
 
     fn proposal_data(&self, pubkey: &PublicKeyBytes) -> Option<ProposalData> {
@@ -639,68 +845,5 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
             gas_limit: 29_999_998,    // TODO support scalooors
             builder_proposals: false, // TODO support MEVooors
         })
-    }
-}
-
-impl<T: SlotClock, E: EthSpec> SignBlock<E, FullPayload<E>, SpecificError>
-    for AnchorValidatorStore<T, E>
-{
-    async fn sign_block(
-        &self,
-        validator_pubkey: PublicKeyBytes,
-        block: BeaconBlock<E, FullPayload<E>>,
-        current_slot: Slot,
-    ) -> Result<SignedBeaconBlock<E, FullPayload<E>>, ValidatorStoreError<SpecificError>> {
-        let data = self
-            .sign_abstract_block(validator_pubkey, block, current_slot, DataSsz::BeaconBlock)
-            .await?;
-        let block = match data {
-            DataSsz::BeaconBlock(block) => block,
-            // todo what do if we agree on a blind block
-            _ => return Err(Error::SpecificError(SpecificError::InvalidQbftData)),
-        };
-
-        // yay - we agree! let's sign the block we agreed on
-        let domain_hash = self.get_domain(block.epoch(), Domain::BeaconProposer);
-        let signing_root = block.signing_root(domain_hash);
-        let signature = self
-            .collect_signature(validator_pubkey, signing_root)
-            .await?;
-
-        Ok(SignedBeaconBlock::from_block(block, signature))
-    }
-}
-
-impl<T: SlotClock, E: EthSpec> SignBlock<E, BlindedPayload<E>, SpecificError>
-    for AnchorValidatorStore<T, E>
-{
-    async fn sign_block(
-        &self,
-        validator_pubkey: PublicKeyBytes,
-        block: BeaconBlock<E, BlindedPayload<E>>,
-        current_slot: Slot,
-    ) -> Result<SignedBeaconBlock<E, BlindedPayload<E>>, Error> {
-        let data = self
-            .sign_abstract_block(
-                validator_pubkey,
-                block,
-                current_slot,
-                DataSsz::BlindedBeaconBlock,
-            )
-            .await?;
-        let block = match data {
-            DataSsz::BlindedBeaconBlock(block) => block,
-            // todo what do if we agree on a non-blind block
-            _ => return Err(Error::SpecificError(SpecificError::InvalidQbftData)),
-        };
-
-        // yay - we agree! let's sign the block we agreed on
-        let domain_hash = self.get_domain(block.epoch(), Domain::BeaconProposer);
-        let signing_root = block.signing_root(domain_hash);
-        let signature = self
-            .collect_signature(validator_pubkey, signing_root)
-            .await?;
-
-        Ok(SignedBeaconBlock::from_block(block, signature))
     }
 }
