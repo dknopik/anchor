@@ -2,6 +2,7 @@
 use crate::validation::ValidatedData;
 use crate::Data;
 use derive_more::{Deref, From};
+use indexmap::IndexSet;
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -15,7 +16,7 @@ pub trait LeaderFunction {
         operator_id: &OperatorId,
         round: Round,
         instance_height: InstanceHeight,
-        committee: &[OperatorId],
+        committee: &IndexSet<OperatorId>,
     ) -> bool;
 }
 
@@ -28,11 +29,13 @@ impl LeaderFunction for DefaultLeaderFunction {
         operator_id: &OperatorId,
         round: Round,
         instance_height: InstanceHeight,
-        committee: &[OperatorId],
+        committee: &IndexSet<OperatorId>,
     ) -> bool {
         *operator_id
             == *committee
-                .get(((round.get() - Round::default().get()) + *instance_height) % committee.len())
+                .get_index(
+                    ((round.get() - Round::default().get()) + *instance_height) % committee.len(),
+                )
                 .expect("slice bounds kept by modulo length")
     }
 }

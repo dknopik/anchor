@@ -1,5 +1,6 @@
 use super::error::ConfigBuilderError;
 use crate::types::{DefaultLeaderFunction, InstanceHeight, LeaderFunction, OperatorId, Round};
+use indexmap::IndexSet;
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ where
     pub operator_id: OperatorId,
     pub instance_height: InstanceHeight,
     pub round: Round,
-    pub committee_members: Vec<OperatorId>,
+    pub committee_members: IndexSet<OperatorId>,
     pub quorum_size: usize,
     pub round_time: Duration,
     pub max_rounds: usize,
@@ -25,7 +26,7 @@ impl<F: Clone + LeaderFunction> Config<F> {
         self.operator_id
     }
 
-    pub fn commmittee_members(&self) -> &[OperatorId] {
+    pub fn commmittee_members(&self) -> &IndexSet<OperatorId> {
         &self.committee_members
     }
 
@@ -66,7 +67,7 @@ pub struct ConfigBuilder<F: LeaderFunction + Clone> {
     operator_id: Option<OperatorId>,
     instance_height: Option<InstanceHeight>,
     round: Round,
-    committee_members: Vec<OperatorId>,
+    committee_members: IndexSet<OperatorId>,
     quorum_size: Option<usize>,
     round_time: Duration,
     max_rounds: usize,
@@ -78,7 +79,7 @@ impl Default for ConfigBuilder<DefaultLeaderFunction> {
         ConfigBuilder {
             operator_id: None,
             instance_height: None,
-            committee_members: vec![],
+            committee_members: IndexSet::new(),
             quorum_size: None,
             round: Round::default(),
             round_time: Duration::new(2, 0),
@@ -99,7 +100,7 @@ impl<F: LeaderFunction + Clone> ConfigBuilder<F> {
         self
     }
 
-    pub fn committee_members(&mut self, committee_members: Vec<OperatorId>) -> &mut Self {
+    pub fn committee_members(&mut self, committee_members: IndexSet<OperatorId>) -> &mut Self {
         self.committee_members = committee_members;
         self
     }

@@ -37,6 +37,7 @@ health_metrics = { git = "https://github.com/sigp/lighthouse", branch = "anchor"
 http_api = { path = "anchor/http_api" }
 http_metrics = { path = "anchor/http_metrics" }
 hyper = "1.4"
+indexmap = "2.7.0"
 lighthouse_network = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 metrics = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 network = { path = "anchor/network" }
