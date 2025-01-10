@@ -3,6 +3,7 @@
 members = [
     "anchor",
     "anchor/client",
+    "anchor/common/blst_lagrange",
     "anchor/common/qbft",
     "anchor/common/ssv_types",
     "anchor/common/version",
@@ -23,6 +24,8 @@ edition = "2021"
 async-channel = "1.9"
 axum = "0.7.7"
 base64 = "0.22.1"
+blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
+blst_lagrange = { path = "anchor/common/blst_lagrange" }
 clap = { version = "4.5.15", features = ["derive", "wrap_help"] }
 client = { path = "anchor/client" }
 dashmap = "6.1.0"
@@ -44,6 +47,7 @@ openssl = "0.10.68"
 parking_lot = "0.12"
 processor = { path = "anchor/processor" }
 qbft = { path = "anchor/common/qbft" }
+rand = "0.8.5"
 rusqlite = "0.28.0"
 sensitive_url = { git = "https://github.com/agemanning/lighthouse", branch = "modularize-vc" }
 serde = { version = "1.0.208", features = ["derive"] }
@@ -66,9 +70,11 @@ unused_port = { git = "https://github.com/sigp/lighthouse", branch = "unstable" 
 validator_metrics = { git = "https://github.com/agemanning/lighthouse", branch = "modularize-vc" }
 version = { path = "anchor/common/version" }
 
+[patch.crates-io]
+blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
+
 [profile.maxperf]
 inherits = "release"
 lto = "fat"
 codegen-units = 1
 incremental = false
-

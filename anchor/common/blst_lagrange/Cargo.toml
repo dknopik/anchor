@@ -1,0 +1,8 @@
+[package]
+name = "blst_lagrange"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+blst = { workspace = true }
+rand = { workspace = true }
