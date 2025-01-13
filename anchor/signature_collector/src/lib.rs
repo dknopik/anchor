@@ -1,3 +1,4 @@
+use blst_lagrange::KeyId;
 use dashmap::DashMap;
 use processor::{DropOnFinish, Senders, WorkItem};
 use ssv_types::{ClusterId, OperatorId};
@@ -136,6 +137,8 @@ pub enum CollectionError {
     QueueClosedError,
     QueueFullError,
     CollectionTimeout,
+    EmptySignature,
+    RecoverError(blst_lagrange::Error),
 }
 
 impl From<TrySendError<WorkItem>> for CollectionError {
@@ -150,6 +153,12 @@ impl From<TrySendError<WorkItem>> for CollectionError {
 impl From<RecvError> for CollectionError {
     fn from(_: RecvError) -> Self {
         CollectionError::QueueClosedError
+    }
+}
+
+impl From<blst_lagrange::Error> for CollectionError {
+    fn from(err: blst_lagrange::Error) -> Self {
+        CollectionError::RecoverError(err)
     }
 }
 
@@ -197,13 +206,13 @@ async fn signature_collector(
                 if signature_share.len() as u64 >= request.threshold {
                     // TODO move to blocking threadpool?
 
-                    // TODO do magic crypto to actually restore signature, for now hackily take first one
-                    let signature = mem::take(&mut signature_share)
-                        .into_iter()
-                        .next()
-                        .unwrap()
-                        .1
-                        .into();
+                    let signature = match recover_signature(mem::take(&mut signature_share)) {
+                        Ok(signature) => Arc::new(signature),
+                        Err(err) => {
+                            error!(?err, "Failed to recover signature");
+                            return;
+                        }
+                    };
 
                     for notifier in mem::take(&mut notifiers) {
                         let _ = notifier.send(Arc::clone(&signature));
@@ -213,4 +222,24 @@ async fn signature_collector(
             }
         }
     }
+}
+
+fn recover_signature(
+    shares: HashMap<OperatorId, Box<Signature>>,
+) -> Result<Signature, CollectionError> {
+    let (ids, signatures): (Vec<_>, Vec<_>) = shares
+        .into_iter()
+        .map(|(k, s)| {
+            s.point()
+                .ok_or(CollectionError::EmptySignature)
+                .map(|s| (KeyId::from(*k), *s))
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .unzip();
+
+    Ok(Signature::from_point(
+        blst_lagrange::recover_signature(&signatures, &ids)?,
+        false,
+    ))
 }

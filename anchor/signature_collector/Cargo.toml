@@ -5,6 +5,7 @@ edition = { workspace = true }
 authors = ["Sigma Prime <contact@sigmaprime.io>"]
 
 [dependencies]
+blst_lagrange = { workspace = true }
 dashmap = { workspace = true }
 processor = { workspace = true }
 ssv_types = { workspace = true }

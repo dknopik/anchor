@@ -1,6 +1,5 @@
 //! THIS CRATE IS NOT READY FOR PRODUCTION USE! DO *NOT* USE IN PRODUCTION CODE!
 // from https://github.com/herumi/mcl/blob/3462cf0983bffb703a6e9f4623e47a26ec6e7fe5/include/mcl/lagrange.hpp
-//#![feature(test)]
 use blst::min_pk::{SecretKey, Signature};
 use blst::*;
 use rand::prelude::*;
@@ -41,11 +40,19 @@ fn key_to_fr(key: &SecretKey) -> blst_fr {
         key_fr.assume_init()
     }
 }
-
 pub fn split(
     key: &SecretKey,
     threshold: NonZeroU64,
     total: NonZeroU64,
+) -> Result<Vec<(KeyId, SecretKey)>, Error> {
+    split_with_rng(key, threshold, total, &mut thread_rng())
+}
+
+pub fn split_with_rng(
+    key: &SecretKey,
+    threshold: NonZeroU64,
+    total: NonZeroU64,
+    rng: &mut (impl CryptoRng + Rng),
 ) -> Result<Vec<(KeyId, SecretKey)>, Error> {
     let threshold = threshold.get();
     let total = total.get();
@@ -56,7 +63,6 @@ pub fn split(
         return Ok(vec![(0.into(), key.clone()); total as usize]);
     }
 
-    let rng = &mut thread_rng();
     let msk = once(key_to_fr(key))
         .chain(repeat_with(|| key_to_fr(&random_key(rng))).take((threshold - 1) as usize))
         .collect::<Vec<_>>();
@@ -78,7 +84,7 @@ pub fn split(
         .collect()
 }
 
-fn recover_signature(signatures: &[Signature], ids: &[KeyId]) -> Result<Signature, Error> {
+pub fn recover_signature(signatures: &[Signature], ids: &[KeyId]) -> Result<Signature, Error> {
     if signatures.len() < 2 {
         return Err(Error::LessThanTwoSignatures);
     }
@@ -108,7 +114,7 @@ fn recover_signature(signatures: &[Signature], ids: &[KeyId]) -> Result<Signatur
     let mut d = Vec::with_capacity(ids.len() * 32);
     unsafe {
         for id_i in ids {
-            let mut denominator = id_i.id.clone();
+            let mut denominator = id_i.id;
             for id_j in ids.iter() {
                 if id_i as *const KeyId != id_j as *const KeyId {
                     blst_fr_sub(ifr.as_mut_ptr(), &id_j.id, &id_i.id);
@@ -192,39 +198,39 @@ fn recover_signature(signatures: &[Signature], ids: &[KeyId]) -> Result<Signatur
     }
 }*/
 
-// TODO: SECURE RANDOMNESS!!!
-fn random_key(rng: &mut ThreadRng) -> SecretKey {
+fn random_key(rng: &mut (impl CryptoRng + Rng)) -> SecretKey {
     let ikm: [u8; 32] = rng.gen();
     SecretKey::key_gen(&ikm, &[]).unwrap()
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::hint::black_box;
     use std::time::Instant;
-    use super::*;
 
     pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 
     #[test]
     fn test_basic_often() {
-        for _ in 0..100 {
-            test_basic();
+        let mut rng = &mut StdRng::seed_from_u64(0x12345EED00000000);
+        for _ in 0..1000 {
+            test_basic(&mut rng);
         }
     }
 
-    fn test_basic() {
-        let rng = &mut thread_rng();
+    fn test_basic(rng: &mut (impl CryptoRng + Rng)) {
         let total = rng.gen_range(2..=13);
         let threshold = rng.gen_range(2..=total);
 
         let master = random_key(rng);
         let pk = master.sk_to_pk();
 
-        let mut keys = split(
+        let mut keys = split_with_rng(
             &master,
             NonZeroU64::new(threshold as u64).unwrap(),
             NonZeroU64::new(total as u64).unwrap(),
+            rng,
         )
         .unwrap();
 
@@ -258,19 +264,18 @@ mod tests {
 
     #[test]
     fn bench_basic() {
-        let rng = &mut thread_rng();
+        let rng = &mut StdRng::seed_from_u64(0x12345EED00000000);
         let total = rng.gen_range(2..=13);
         let threshold = rng.gen_range(2..=total);
 
         let master = random_key(rng);
-        let pk = master.sk_to_pk();
 
         let mut keys = split(
             &master,
             NonZeroU64::new(threshold as u64).unwrap(),
             NonZeroU64::new(total as u64).unwrap(),
         )
-            .unwrap();
+        .unwrap();
 
         // shuffle to sign with varying key indices
         keys.shuffle(rng);
@@ -291,16 +296,9 @@ mod tests {
             .collect::<Vec<_>>();
 
         let timing = Instant::now();
-        for _ in 0..10_000 {
+        for _ in 0..1_000 {
             black_box(recover_signature(&signatures, &ids[..signers]).unwrap());
         }
         println!("took {} ms", timing.elapsed().as_millis());
-
-        /*let result = aggregate.verify(true, &data, DST, &[], &pk, false);
-        if signers >= threshold {
-            assert_eq!(result, BLST_ERROR::BLST_SUCCESS);
-        } else {
-            assert_eq!(result, BLST_ERROR::BLST_VERIFY_FAIL);
-        }*/
     }
 }
