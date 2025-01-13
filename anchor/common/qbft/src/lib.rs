@@ -111,10 +111,10 @@ where
 
     /// Once we have achieved consensus on a PREPARE round, we add the data to mapping to match
     /// against later.
-    fn insert_consensus(&mut self, round: Round, data: D::Hash) {
-        debug!(round = *round, ?data, "Reached prepare consensus");
-        if let Some(past_data) = self.past_consensus.insert(round, data.clone()) {
-            warn!(round = *round, ?data, past_data = ?past_data, "Adding duplicate consensus data");
+    fn insert_consensus(&mut self, round: Round, hash: D::Hash) {
+        debug!(round = *round, ?hash, "Reached prepare consensus");
+        if let Some(past_data) = self.past_consensus.insert(round, hash.clone()) {
+            warn!(round = *round, ?hash, past_data = ?past_data, "Adding duplicate consensus data");
         }
     }
 
@@ -188,16 +188,16 @@ where
             // We are the leader
             debug!("Current leader");
             // Check justification of round change quorum
-            let hash = if let Some(validated_data) = self.justify_round_change_quorum().cloned() {
+            let hash = if let Some(validated_data) = self.justify_round_change_quorum() {
                 debug!(
                     old_data = ?validated_data,
                     "Using consensus data from a previous round");
                 validated_data
             } else {
                 debug!("Using initialised data");
-                self.start_data.clone()
+                &self.start_data
             };
-            if let Some(data) = self.data.get(&hash).cloned() {
+            if let Some(data) = self.data.get(hash).cloned() {
                 self.send_proposal(data);
             } else {
                 error!("Unable to find data for known hash")
