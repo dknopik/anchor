@@ -1,6 +1,6 @@
 //! THIS CRATE IS NOT READY FOR PRODUCTION USE! DO *NOT* USE IN PRODUCTION CODE!
 // from https://github.com/herumi/mcl/blob/3462cf0983bffb703a6e9f4623e47a26ec6e7fe5/include/mcl/lagrange.hpp
-
+//#![feature(test)]
 use blst::min_pk::{SecretKey, Signature};
 use blst::*;
 use rand::prelude::*;
@@ -78,7 +78,7 @@ pub fn split(
         .collect()
 }
 
-fn recover_signature_v1(signatures: &[Signature], ids: &[KeyId]) -> Result<Signature, Error> {
+fn recover_signature(signatures: &[Signature], ids: &[KeyId]) -> Result<Signature, Error> {
     if signatures.len() < 2 {
         return Err(Error::LessThanTwoSignatures);
     }
@@ -86,67 +86,50 @@ fn recover_signature_v1(signatures: &[Signature], ids: &[KeyId]) -> Result<Signa
         return Err(Error::NotOneIdPerSignature);
     }
 
-    // intermediates. todo: maybe we can get rid of i2?
-    let mut i1 = MaybeUninit::<blst_fr>::uninit();
-    let mut i2 = MaybeUninit::<blst_fr>::uninit();
+    // intermediates.
+    let mut ifr = MaybeUninit::<blst_fr>::uninit();
     let mut is = MaybeUninit::<blst_scalar>::uninit();
 
     let zero = unsafe {
-        blst_fr_from_uint64(i1.as_mut_ptr(), &0);
-        i1.assume_init()
+        blst_fr_from_uint64(ifr.as_mut_ptr(), &0);
+        ifr.assume_init()
     };
 
-    let mut a = ids[0].clone().id;
+    let mut numerator = ids[0].clone().id;
     unsafe {
         for id in &ids[1..] {
-            blst_fr_mul(i1.as_mut_ptr(), &a, &id.id);
-            a = i1.assume_init()
+            blst_fr_mul(&mut numerator, &numerator, &id.id);
         }
     }
-    if a == zero {
+    if numerator == zero {
         return Err(Error::ZeroId);
     }
 
     let mut d = Vec::with_capacity(ids.len() * 32);
-    for id_i in ids {
-        for id_j in ids.iter() {
-            if id_i as *const KeyId != id_j as *const KeyId {
-                unsafe {
-                    blst_fr_sub(i1.as_mut_ptr(), &id_j.id, &id_i.id);
-                    if i1.assume_init_ref() == &zero {
+    unsafe {
+        for id_i in ids {
+            let mut denominator = id_i.id.clone();
+            for id_j in ids.iter() {
+                if id_i as *const KeyId != id_j as *const KeyId {
+                    blst_fr_sub(ifr.as_mut_ptr(), &id_j.id, &id_i.id);
+                    if ifr.assume_init_ref() == &zero {
                         return Err(Error::RepeatedId);
                     }
-                    blst_fr_mul(i2.as_mut_ptr(), &id_i.id, i1.as_ptr());
-                    // todo we might have to check that another_intermediate != 0 before inversing
-                    blst_fr_inverse(i1.as_mut_ptr(), i2.as_ptr());
-                    blst_fr_mul(i2.as_mut_ptr(), i1.as_ptr(), &a);
-                    blst_scalar_from_fr(is.as_mut_ptr(), i2.as_ptr());
-                    d.extend(is.assume_init_ref().b);
+                    blst_fr_mul(&mut denominator, &denominator, ifr.as_ptr());
                 }
             }
+            blst_fr_inverse(&mut denominator, &denominator);
+            blst_fr_mul(ifr.as_mut_ptr(), &denominator, &numerator);
+            blst_scalar_from_fr(is.as_mut_ptr(), ifr.as_ptr());
+            d.extend(is.assume_init_ref().b);
         }
     }
-
-    /*let signatures = signatures.iter().map(|(_, signature)| {
-        let mut p2 = MaybeUninit::<blst_p2>::uninit();
-        unsafe {
-            blst_p2_from_affine(p2.as_mut_ptr(), signature.into());
-            p2.assume_init()
-        }
-    }).collect::<Vec<_>>();
-
-    let result = MaybeUninit::<blst_p2>::uninit();
-    unsafe {
-        blst_p2_unchecked_mult()
-    }
-
-
-    Ok(unsafe { result.assume_init() })*/
 
     Ok(signatures.mult(&d, 255).to_signature())
 }
 
-fn recover_signature_v2(signatures: &[Signature], ids: &[KeyId]) -> Result<Signature, Error> {
+// variant not using blsts pooling, seems to be slower
+/*fn recover_signature(signatures: &[Signature], ids: &[KeyId]) -> Result<Signature, Error> {
     if signatures.len() < 2 {
         return Err(Error::LessThanTwoSignatures);
     }
@@ -154,64 +137,60 @@ fn recover_signature_v2(signatures: &[Signature], ids: &[KeyId]) -> Result<Signa
         return Err(Error::NotOneIdPerSignature);
     }
 
-    // intermediates. todo: maybe we can get rid of i2?
-    let mut fr_1 = MaybeUninit::<blst_fr>::uninit();
-    let mut fr_2 = MaybeUninit::<blst_fr>::uninit();
-    let mut s = MaybeUninit::<blst_scalar>::uninit();
-    let mut p2_1 = MaybeUninit::<blst_p2>::uninit();
-    let mut p2_2 = MaybeUninit::<blst_p2>::uninit();
-    let mut p2a = MaybeUninit::<blst_p2_affine>::uninit();
+    // intermediates.
+    let mut ifr = MaybeUninit::<blst_fr>::uninit();
+    let mut is = MaybeUninit::<blst_scalar>::uninit();
+    let mut ip2 = MaybeUninit::<blst_p2>::uninit();
+    let mut ip2a = MaybeUninit::<blst_p2_affine>::uninit();
 
     let zero = unsafe {
-        blst_fr_from_uint64(fr_1.as_mut_ptr(), &0);
-        fr_1.assume_init()
+        blst_fr_from_uint64(ifr.as_mut_ptr(), &0);
+        ifr.assume_init()
     };
 
-    let mut a = ids[0].clone().id;
+    let mut numerator = ids[0].clone().id;
     unsafe {
         for id in &ids[1..] {
-            blst_fr_mul(fr_1.as_mut_ptr(), &a, &id.id);
-            a = fr_1.assume_init()
+            blst_fr_mul(&mut numerator, &numerator, &id.id);
         }
     }
-    if a == zero {
+    if numerator == zero {
         return Err(Error::ZeroId);
     }
 
-    let mut first = false;
+    let mut first = true;
     let mut result = MaybeUninit::<blst_p2>::uninit();
-    for (id_i, sig_i) in ids.iter().zip(signatures) {
-        for id_j in ids {
-            if id_i as *const KeyId != id_j as *const KeyId {
-                unsafe {
-                    blst_fr_sub(fr_1.as_mut_ptr(), &id_j.id, &id_i.id);
-                    if fr_1.assume_init_ref() == &zero {
+    unsafe {
+        for (id_i, sig_i) in ids.iter().zip(signatures) {
+            let mut denominator = id_i.id.clone();
+            for id_j in ids.iter() {
+                if id_i as *const KeyId != id_j as *const KeyId {
+                    blst_fr_sub(ifr.as_mut_ptr(), &id_j.id, &id_i.id);
+                    if ifr.assume_init_ref() == &zero {
                         return Err(Error::RepeatedId);
                     }
-                    blst_fr_mul(fr_2.as_mut_ptr(), &id_i.id, fr_1.as_ptr());
-                    // todo we might have to check that fr_2 != 0 before inversing
-                    blst_fr_inverse(fr_1.as_mut_ptr(), fr_2.as_ptr());
-                    blst_fr_mul(fr_2.as_mut_ptr(), fr_1.as_ptr(), &a);
-                    blst_scalar_from_fr(s.as_mut_ptr(), fr_2.as_ptr());
-                    blst_p2_from_affine(p2_1.as_mut_ptr(), <&blst_p2_affine>::from(sig_i));
-                    blst_p2_mult(p2_2.as_mut_ptr(), p2_1.as_ptr(), s.as_ptr() as *const u8, 255);
-                    if first {
-                        result.write(p2_2.assume_init());
-                        first = false;
-                    } else {
-                        blst_p2_add(p2_1.as_mut_ptr(), result.as_ptr(), p2_2.as_ptr());
-                        result.write(p2_1.assume_init());
-                    }
+                    blst_fr_mul(&mut denominator, &denominator, ifr.as_ptr());
                 }
+            }
+            blst_fr_inverse(&mut denominator, &denominator);
+            blst_fr_mul(ifr.as_mut_ptr(), &denominator, &numerator);
+            blst_scalar_from_fr(is.as_mut_ptr(), ifr.as_ptr());
+            blst_p2_from_affine(ip2.as_mut_ptr(), <&blst_p2_affine>::from(sig_i));
+            blst_p2_mult(ip2.as_mut_ptr(), ip2.as_ptr(), &is.assume_init_ref().b as *const u8, 255);
+            if first {
+                result.write(ip2.assume_init());
+                first = false;
+            } else {
+                blst_p2_add(result.as_mut_ptr(), result.as_ptr(), ip2.as_ptr());
             }
         }
     }
 
     unsafe {
-        blst_p2_to_affine(p2a.as_mut_ptr(), result.as_ptr());
-        Ok(p2a.assume_init().into())
+        blst_p2_to_affine(ip2a.as_mut_ptr(), result.as_ptr());
+        Ok(ip2a.assume_init().into())
     }
-}
+}*/
 
 // TODO: SECURE RANDOMNESS!!!
 fn random_key(rng: &mut ThreadRng) -> SecretKey {
@@ -257,7 +236,7 @@ mod tests {
         let mut data = [0u8; 1024];
         rng.fill(&mut data);
 
-        let signers = rng.gen_range(2..=threshold);
+        let signers = rng.gen_range(2..=total);
 
         let signatures = keys
             .into_iter()
@@ -265,10 +244,9 @@ mod tests {
             .map(|key| key.sign(&data, DST, &[]))
             .collect::<Vec<_>>();
 
-        let aggregate_v1 = recover_signature_v1(&signatures, &ids[..signers]).unwrap();
-        let aggregate_v2 = recover_signature_v2(&signatures, &ids[..signers]).unwrap();
+        let aggregate = recover_signature(&signatures, &ids[..signers]).unwrap();
 
-        let result = aggregate_v1.verify(true, &data, DST, &[], &pk, false);
+        let result = aggregate.verify(true, &data, DST, &[], &pk, false);
         if signers >= threshold {
             assert_eq!(result, BLST_ERROR::BLST_SUCCESS);
         } else {
