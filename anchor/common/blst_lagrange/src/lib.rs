@@ -200,6 +200,8 @@ fn random_key(rng: &mut ThreadRng) -> SecretKey {
 
 #[cfg(test)]
 mod tests {
+    use std::hint::black_box;
+    use std::time::Instant;
     use super::*;
 
     pub const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
@@ -252,5 +254,53 @@ mod tests {
         } else {
             assert_eq!(result, BLST_ERROR::BLST_VERIFY_FAIL);
         }
+    }
+
+    #[test]
+    fn bench_basic() {
+        let rng = &mut thread_rng();
+        let total = rng.gen_range(2..=13);
+        let threshold = rng.gen_range(2..=total);
+
+        let master = random_key(rng);
+        let pk = master.sk_to_pk();
+
+        let mut keys = split(
+            &master,
+            NonZeroU64::new(threshold as u64).unwrap(),
+            NonZeroU64::new(total as u64).unwrap(),
+        )
+            .unwrap();
+
+        // shuffle to sign with varying key indices
+        keys.shuffle(rng);
+
+        let (ids, keys): (Vec<_>, Vec<_>) = keys.into_iter().unzip();
+
+        assert_eq!(keys.len(), total);
+
+        let mut data = [0u8; 1024];
+        rng.fill(&mut data);
+
+        let signers = rng.gen_range(2..=total);
+
+        let signatures = keys
+            .into_iter()
+            .take(signers)
+            .map(|key| key.sign(&data, DST, &[]))
+            .collect::<Vec<_>>();
+
+        let timing = Instant::now();
+        for _ in 0..10_000 {
+            black_box(recover_signature(&signatures, &ids[..signers]).unwrap());
+        }
+        println!("took {} ms", timing.elapsed().as_millis());
+
+        /*let result = aggregate.verify(true, &data, DST, &[], &pk, false);
+        if signers >= threshold {
+            assert_eq!(result, BLST_ERROR::BLST_SUCCESS);
+        } else {
+            assert_eq!(result, BLST_ERROR::BLST_VERIFY_FAIL);
+        }*/
     }
 }
