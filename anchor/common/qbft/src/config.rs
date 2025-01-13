@@ -9,14 +9,14 @@ pub struct Config<F>
 where
     F: LeaderFunction + Clone,
 {
-    pub operator_id: OperatorId,
-    pub instance_height: InstanceHeight,
-    pub round: Round,
-    pub committee_members: IndexSet<OperatorId>,
-    pub quorum_size: usize,
-    pub round_time: Duration,
-    pub max_rounds: usize,
-    pub leader_fn: F,
+    operator_id: OperatorId,
+    instance_height: InstanceHeight,
+    round: Round,
+    committee_members: IndexSet<OperatorId>,
+    quorum_size: usize,
+    round_time: Duration,
+    max_rounds: usize,
+    leader_fn: F,
 }
 
 impl<F: Clone + LeaderFunction> Config<F> {
@@ -26,14 +26,22 @@ impl<F: Clone + LeaderFunction> Config<F> {
         self.operator_id
     }
 
-    pub fn commmittee_members(&self) -> &IndexSet<OperatorId> {
-        &self.committee_members
+    pub fn instance_height(&self) -> &InstanceHeight {
+        &self.instance_height
     }
 
     /// The round number -- likely always 1 at initialisation unless we want to implement re-joining an existing
     /// instance that has been dropped locally
     pub fn round(&self) -> Round {
         self.round
+    }
+
+    pub fn committee_members(&self) -> &IndexSet<OperatorId> {
+        &self.committee_members
+    }
+
+    pub fn quorum_size(&self) -> usize {
+        self.quorum_size
     }
 
     /// How long the round will last
@@ -52,8 +60,22 @@ impl<F: Clone + LeaderFunction> Config<F> {
     }
 
     /// Obtains the maximum number of faulty nodes that this consensus can tolerate
-    pub(crate) fn get_f(&self) -> usize {
+    pub fn get_f(&self) -> usize {
         get_f(self.committee_members.len())
+    }
+
+    /// Private constructor so it can only be built by our `ConfigBuilder`.
+    fn from_builder(builder: &ConfigBuilder<F>) -> Self {
+        Self {
+            operator_id: builder.operator_id,
+            instance_height: builder.instance_height,
+            committee_members: builder.committee_members.clone(),
+            round: builder.round,
+            round_time: builder.round_time,
+            max_rounds: builder.max_rounds,
+            quorum_size: builder.quorum_size,
+            leader_fn: builder.leader_fn.clone(),
+        }
     }
 }
 
@@ -63,117 +85,174 @@ fn get_f(members: usize) -> usize {
 
 /// Builder struct for constructing the QBFT instance configuration
 #[derive(Clone, Debug)]
-pub struct ConfigBuilder<F: LeaderFunction + Clone> {
-    operator_id: Option<OperatorId>,
-    instance_height: Option<InstanceHeight>,
-    round: Round,
+pub struct ConfigBuilder<F = DefaultLeaderFunction>
+where
+    F: LeaderFunction + Clone,
+{
+    // Mandatory fields
+    operator_id: OperatorId,
+    instance_height: InstanceHeight,
     committee_members: IndexSet<OperatorId>,
-    quorum_size: Option<usize>,
+    leader_fn: F,
+
+    // Optional fields with defaults set in the constructor
+    round: Round,
     round_time: Duration,
     max_rounds: usize,
-    leader_fn: F,
+    quorum_size: usize,
 }
 
-impl Default for ConfigBuilder<DefaultLeaderFunction> {
-    fn default() -> Self {
+impl<F> ConfigBuilder<F>
+where
+    F: LeaderFunction + Clone + Default,
+{
+    pub fn new(
+        operator_id: OperatorId,
+        instance_height: InstanceHeight,
+        committee_members: IndexSet<OperatorId>,
+    ) -> Self {
+        let committee_size = committee_members.len();
+        let f = get_f(committee_size);
+        let default_quorum = committee_size.saturating_sub(f);
+
         ConfigBuilder {
-            operator_id: None,
-            instance_height: None,
-            committee_members: IndexSet::new(),
-            quorum_size: None,
+            operator_id,
+            instance_height,
+            committee_members,
             round: Round::default(),
             round_time: Duration::new(2, 0),
             max_rounds: 4,
-            leader_fn: DefaultLeaderFunction {},
+            quorum_size: default_quorum,
+            leader_fn: F::default(),
         }
     }
 }
 
-impl<F: LeaderFunction + Clone> ConfigBuilder<F> {
-    pub fn operator_id(&mut self, operator_id: OperatorId) -> &mut Self {
-        self.operator_id = Some(operator_id);
+impl<F> ConfigBuilder<F>
+where
+    F: LeaderFunction + Clone,
+{
+    pub fn new_with_leader_fn(
+        operator_id: OperatorId,
+        instance_height: InstanceHeight,
+        committee_members: IndexSet<OperatorId>,
+        leader_fn: F,
+    ) -> Self {
+        let committee_size = committee_members.len();
+        let f = get_f(committee_size);
+        let default_quorum = committee_size.saturating_sub(f);
+
+        ConfigBuilder {
+            operator_id,
+            instance_height,
+            committee_members,
+            round: Round::default(),
+            round_time: Duration::new(2, 0),
+            max_rounds: 4,
+            quorum_size: default_quorum,
+            leader_fn,
+        }
+    }
+    pub fn operator_id(&self) -> OperatorId {
+        self.operator_id
+    }
+
+    pub fn committee_members(&self) -> &IndexSet<OperatorId> {
+        &self.committee_members
+    }
+
+    pub fn instance_height(&self) -> &InstanceHeight {
+        &self.instance_height
+    }
+
+    pub fn round(&self) -> Round {
+        self.round
+    }
+
+    pub fn round_time(&self) -> Duration {
+        self.round_time
+    }
+
+    pub fn quorum_size(&self) -> usize {
+        self.quorum_size
+    }
+
+    pub fn max_rounds(&self) -> usize {
+        self.max_rounds
+    }
+
+    pub fn leader_fn(&self) -> &F {
+        &self.leader_fn
+    }
+
+    // Chained setter methods for optional fields to override defaults
+    pub fn with_operator_id(mut self, operator_id: OperatorId) -> Self {
+        self.operator_id = operator_id;
         self
     }
 
-    pub fn instance_height(&mut self, instance_height: InstanceHeight) -> &mut Self {
-        self.instance_height = Some(instance_height);
+    pub fn with_instance_height(mut self, instance_height: InstanceHeight) -> Self {
+        self.instance_height = instance_height;
         self
     }
 
-    pub fn committee_members(&mut self, committee_members: IndexSet<OperatorId>) -> &mut Self {
+    pub fn with_committee_members(mut self, committee_members: IndexSet<OperatorId>) -> Self {
         self.committee_members = committee_members;
         self
     }
 
-    pub fn quorum_size(&mut self, quorum_size: usize) -> &mut Self {
-        self.quorum_size = Some(quorum_size);
-        self
-    }
-
-    pub fn round(&mut self, round: Round) -> &mut Self {
+    pub fn with_round(mut self, round: Round) -> Self {
         self.round = round;
         self
     }
 
-    pub fn max_round(&mut self, max_rounds: usize) -> &mut Self {
-        self.max_rounds = max_rounds;
-        self
-    }
-
-    pub fn round_time(&mut self, round_time: Duration) -> &mut Self {
+    pub fn with_round_time(mut self, round_time: Duration) -> Self {
         self.round_time = round_time;
         self
     }
 
-    pub fn leader_fn(&mut self, leader_fn: F) -> &mut Self {
+    pub fn with_max_rounds(mut self, max_rounds: usize) -> Self {
+        self.max_rounds = max_rounds;
+        self
+    }
+
+    pub fn with_quorum_size(mut self, quorum_size: usize) -> Self {
+        self.quorum_size = quorum_size;
+        self
+    }
+
+    pub fn with_leader_fn(mut self, leader_fn: F) -> Self {
         self.leader_fn = leader_fn;
         self
     }
 
-    pub fn build(&self) -> Result<Config<F>, ConfigBuilderError> {
+    pub fn build(self) -> Result<Config<F>, ConfigBuilderError> {
+        // Validate mandatory fields
         let committee_size = self.committee_members.len();
-        if committee_size < 1 {
+        if committee_size == 0 {
             return Err(ConfigBuilderError::NoParticipants);
         }
+        if !self.committee_members.contains(&self.operator_id) {
+            return Err(ConfigBuilderError::OperatorNotParticipant);
+        }
 
+        // Validate `quorum_size`
         let f = get_f(committee_size);
+        if self.quorum_size < f * 2 + 1 || self.quorum_size > committee_size - f {
+            return Err(ConfigBuilderError::InvalidQuorumSize);
+        }
 
-        let quorum_size = match self.quorum_size {
-            None => committee_size - f,
-            Some(quorum_size) => {
-                if quorum_size < f * 2 + 1 || quorum_size > committee_size - f {
-                    return Err(ConfigBuilderError::InvalidQuorumSize);
-                }
-                quorum_size
-            }
-        };
-
+        // Validate `max_rounds`
         if self.max_rounds == 0 {
             return Err(ConfigBuilderError::ZeroMaxRounds);
         }
 
+        // Validate `round`
         if self.round.get() > self.max_rounds {
             return Err(ConfigBuilderError::ExceedingStartingRound);
         }
 
-        let operator_id = self
-            .operator_id
-            .ok_or(ConfigBuilderError::MissingOperatorId)?;
-        if !self.committee_members.contains(&operator_id) {
-            return Err(ConfigBuilderError::OperatorNotParticipant);
-        }
-
-        Ok(Config {
-            operator_id,
-            instance_height: self
-                .instance_height
-                .ok_or(ConfigBuilderError::MissingInstanceHeight)?,
-            committee_members: self.committee_members.clone(),
-            quorum_size,
-            round: self.round,
-            round_time: self.round_time,
-            max_rounds: self.max_rounds,
-            leader_fn: self.leader_fn.clone(),
-        })
+        // If everything is okay, build and return a `Config`.
+        Ok(Config::from_builder(&self))
     }
 }

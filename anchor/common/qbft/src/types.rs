@@ -20,7 +20,7 @@ pub trait LeaderFunction {
     ) -> bool;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DefaultLeaderFunction {}
 
 impl LeaderFunction for DefaultLeaderFunction {

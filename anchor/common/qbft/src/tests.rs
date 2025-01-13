@@ -18,31 +18,23 @@ const ENABLE_TEST_LOGGING: bool = true;
 /// A struct to help build and initialise a test of running instances
 struct TestQBFTCommitteeBuilder {
     /// The configuration to use for all the instances.
-    config: Config<DefaultLeaderFunction>,
+    config: ConfigBuilder,
 }
 
 impl Default for TestQBFTCommitteeBuilder {
     fn default() -> Self {
-        let mut builder = ConfigBuilder::default();
-        builder
-            .operator_id(0.into())
-            .committee_members((0..5).map(OperatorId::from).collect())
-            .instance_height(InstanceHeight::default());
-
         TestQBFTCommitteeBuilder {
-            config: builder.build().expect("test config should be valid"),
+            config: ConfigBuilder::new(
+                0.into(),
+                InstanceHeight::default(),
+                (0..5).map(OperatorId::from).collect(),
+            ),
         }
     }
 }
 
 #[allow(dead_code)]
 impl TestQBFTCommitteeBuilder {
-    /// Sets the config for all instances to run
-    pub fn set_config(mut self, config: Config<DefaultLeaderFunction>) -> Self {
-        self.config = config;
-        self
-    }
-
     /// Consumes self and runs a test scenario. This returns a [`TestQBFTCommittee`] which
     /// represents a running quorum.
     pub fn run<D>(self, data: D) -> TestQBFTCommittee<D, impl FnMut(Message<D>)>
@@ -76,22 +68,24 @@ struct TestQBFTCommittee<D: Default + Data + 'static, S: FnMut(Message<D>)> {
 /// This will create instances and spawn them in a task and return the sender/receiver channels for
 /// all created instances.
 fn construct_and_run_committee<D: Data + Default + 'static>(
-    mut config: Config<DefaultLeaderFunction>,
+    mut config: ConfigBuilder,
     validated_data: ValidatedData<D>,
 ) -> TestQBFTCommittee<D, impl FnMut(Message<D>)> {
     // The ID of a committee is just an integer in [0,committee_size)
 
     let msg_queue = Rc::new(RefCell::new(VecDeque::new()));
-    let mut instances = HashMap::with_capacity(config.committee_members.len());
+    let mut instances = HashMap::with_capacity(config.committee_members().len());
 
-    for id in 0..config.committee_members.len() {
+    for id in 0..config.committee_members().len() {
         let msg_queue = Rc::clone(&msg_queue);
         let id = OperatorId::from(id);
         // Creates a new instance
-        config.operator_id = id;
-        let instance = Qbft::new(config.clone(), validated_data.clone(), move |message| {
-            msg_queue.borrow_mut().push_back((id, message))
-        });
+        config = config.with_operator_id(id);
+        let instance = Qbft::new(
+            config.clone().build().expect("test config is valid"),
+            validated_data.clone(),
+            move |message| msg_queue.borrow_mut().push_back((id, message)),
+        );
         instances.insert(id, instance);
     }
 
