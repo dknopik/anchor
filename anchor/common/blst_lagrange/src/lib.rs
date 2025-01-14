@@ -26,7 +26,7 @@ impl TryFrom<u64> for KeyId {
     type Error = Error;
 
     fn try_from(value: u64) -> Result<Self, Error> {
-        if value == 0 {
+        if value != 0 {
             unsafe {
                 let mut id = blst_fr::default();
                 blst_fr_from_uint64(&mut id, &value);
