@@ -72,15 +72,15 @@ where
     S: FnMut(Message<D>),
 {
     pub fn new(config: Config<F>, start_data: ValidatedData<D>, send_message: S) -> Self {
-        let estimated_map_size = config.committee_members.len();
+        let estimated_map_size = config.committee_members().len();
 
         let mut data = HashMap::with_capacity(2);
         let start_data_hash = start_data.data.hash();
         data.insert(start_data_hash.clone(), start_data);
 
         let mut qbft = Qbft {
-            current_round: config.round,
-            instance_height: config.instance_height,
+            current_round: config.round(),
+            instance_height: *config.instance_height(),
             config,
             start_data: start_data_hash,
             data,
@@ -104,27 +104,12 @@ where
         &self.config
     }
 
-    /// Returns the operator id for this instance.
-    pub fn operator_id(&self) -> OperatorId {
-        self.config.operator_id
-    }
-
-    /// Obtains the maximum number of faulty nodes that this consensus can tolerate
-    fn get_f(&self) -> usize {
-        let f = (self.config.committee_members.len() - 1) % 3;
-        if f > 0 {
-            f
-        } else {
-            1
-        }
-    }
-
     /// Once we have achieved consensus on a PREPARE round, we add the data to mapping to match
     /// against later.
-    fn insert_consensus(&mut self, round: Round, data: D::Hash) {
-        debug!(round = *round, ?data, "Reached prepare consensus");
-        if let Some(past_data) = self.past_consensus.insert(round, data.clone()) {
-            warn!(round = *round, ?data, past_data = ?past_data, "Adding duplicate consensus data");
+    fn insert_consensus(&mut self, round: Round, hash: D::Hash) {
+        debug!(round = *round, ?hash, "Reached prepare consensus");
+        if let Some(past_data) = self.past_consensus.insert(round, hash.clone()) {
+            warn!(round = *round, ?hash, past_data = ?past_data, "Adding duplicate consensus data");
         }
     }
 
@@ -136,17 +121,17 @@ where
 
     // Validation and check functions.
     fn check_leader(&self, operator_id: &OperatorId) -> bool {
-        self.config.leader_fn.leader_function(
+        self.config.leader_fn().leader_function(
             operator_id,
             self.current_round,
             self.instance_height,
-            &self.config.committee_members,
+            self.config.committee_members(),
         )
     }
 
     /// Checks to make sure any given operator is in this instance's comittee.
     fn check_committee(&self, operator_id: &OperatorId) -> bool {
-        self.config.committee_members.contains(operator_id)
+        self.config.committee_members().contains(operator_id)
     }
 
     /// Justify the round change quorum
@@ -160,7 +145,7 @@ where
         // If we have messages for the current round
         if let Some(new_round_messages) = self.round_change_messages.get(&self.current_round) {
             // If we have a quorum
-            if new_round_messages.len() >= self.config.quorum_size {
+            if new_round_messages.len() >= self.config.quorum_size() {
                 // Find the maximum round,value pair
                 let max_consensus_data = new_round_messages
                     .values()
@@ -194,22 +179,21 @@ where
         self.state = InstanceState::AwaitingProposal;
 
         // Check if we are the leader
-        if self.check_leader(&self.operator_id()) {
+        if self.check_leader(&self.config.operator_id()) {
             // We are the leader
             debug!("Current leader");
             // Check justification of round change quorum
-            let hash = if let Some(validated_data) = self.justify_round_change_quorum().cloned() {
+            let hash = if let Some(validated_data) = self.justify_round_change_quorum() {
                 debug!(
                     old_data = ?validated_data,
                     "Using consensus data from a previous round");
                 validated_data
             } else {
                 debug!("Using initialised data");
-                self.start_data.clone()
+                &self.start_data
             };
-            if let Some(data) = self.data.get(&hash).cloned() {
+            if let Some(data) = self.data.get(hash).cloned() {
                 self.send_proposal(data);
-                self.send_prepare(hash.clone());
             } else {
                 error!("Unable to find data for known hash")
             }
@@ -361,7 +345,7 @@ where
                 .iter()
                 .max_by_key(|(_data, operators)| operators.len())
             {
-                if operators.len() >= self.config.quorum_size
+                if operators.len() >= self.config.quorum_size()
                     && matches!(self.state, InstanceState::Prepare)
                 {
                     // We reached quorum on this data
@@ -436,7 +420,7 @@ where
                 .iter()
                 .max_by_key(|(_data, operators)| operators.len())
             {
-                if operators.len() >= self.config.quorum_size
+                if operators.len() >= self.config.quorum_size()
                     && matches!(self.state, InstanceState::Commit)
                 {
                     self.completed = Some(Completed::Success(data.clone()));
@@ -471,12 +455,12 @@ where
         }
 
         //  Ensure that this message is for the correct round
-        if round < self.current_round || round.get() > self.config.max_rounds {
+        if round < self.current_round || round.get() > self.config.max_rounds() {
             warn!(
                 from = *operator_id,
                 current_round = *self.current_round,
                 propose_round = *round,
-                max_rounds = self.config.max_rounds,
+                max_rounds = self.config.max_rounds(),
                 "ROUNDCHANGE message received for the wrong round"
             );
             return;
@@ -518,13 +502,17 @@ where
         // Check if we have any messages for the suggested round
         if let Some(new_round_messages) = self.round_change_messages.get(&round) {
             // Check the quorum size
-            if new_round_messages.len() >= self.config.quorum_size
+            if new_round_messages.len() >= self.config.quorum_size()
                 && matches!(self.state, InstanceState::SentRoundChange)
             {
                 // 1. If we have reached a quorum for this round, advance to that round.
-                debug!(operator_id = ?self.operator_id(), round = *round, "Round change quorum reached");
+                debug!(
+                    operator_id = ?self.config.operator_id(),
+                    round = *round,
+                    "Round change quorum reached"
+                );
                 self.set_round(round);
-            } else if new_round_messages.len() > self.get_f()
+            } else if new_round_messages.len() > self.config.get_f()
                 && !(matches!(self.state, InstanceState::SentRoundChange))
             {
                 // 2. We have seen 2f + 1 messtages for this round.
@@ -556,7 +544,7 @@ where
             round: self.current_round,
             data: data.data,
         };
-        let operator_id = self.operator_id();
+        let operator_id = self.config.operator_id();
         (self.send_message)(Message::Propose(operator_id, consensus_data.clone()));
         self.received_propose(operator_id, consensus_data);
     }
@@ -568,7 +556,7 @@ where
             round: self.current_round,
             data,
         };
-        let operator_id = self.operator_id();
+        let operator_id = self.config.operator_id();
         (self.send_message)(Message::Prepare(operator_id, consensus_data.clone()));
         self.received_prepare(operator_id, consensus_data);
     }
@@ -580,7 +568,7 @@ where
             round: self.current_round,
             data,
         };
-        let operator_id = self.operator_id();
+        let operator_id = self.config.operator_id();
         (self.send_message)(Message::Commit(operator_id, consensus_data.clone()));
         self.received_commit(operator_id, consensus_data)
     }
@@ -599,7 +587,7 @@ where
                 data: data.clone(),
             });
 
-        let operator_id = self.operator_id();
+        let operator_id = self.config.operator_id();
         (self.send_message)(Message::RoundChange(
             operator_id,
             round,

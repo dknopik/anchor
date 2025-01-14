@@ -2,6 +2,7 @@
 use crate::validation::ValidatedData;
 use crate::Data;
 use derive_more::{Deref, From};
+use indexmap::IndexSet;
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -15,11 +16,11 @@ pub trait LeaderFunction {
         operator_id: &OperatorId,
         round: Round,
         instance_height: InstanceHeight,
-        committee: &[OperatorId],
+        committee: &IndexSet<OperatorId>,
     ) -> bool;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DefaultLeaderFunction {}
 
 impl LeaderFunction for DefaultLeaderFunction {
@@ -28,11 +29,13 @@ impl LeaderFunction for DefaultLeaderFunction {
         operator_id: &OperatorId,
         round: Round,
         instance_height: InstanceHeight,
-        committee: &[OperatorId],
+        committee: &IndexSet<OperatorId>,
     ) -> bool {
         *operator_id
             == *committee
-                .get(((round.get() - Round::default().get()) + *instance_height) % committee.len())
+                .get_index(
+                    ((round.get() - Round::default().get()) + *instance_height) % committee.len(),
+                )
                 .expect("slice bounds kept by modulo length")
     }
 }
@@ -43,6 +46,7 @@ pub struct Round(NonZeroUsize);
 
 impl Default for Round {
     fn default() -> Self {
+        // rounds are indexed starting at 1
         Round(NonZeroUsize::new(1).expect("1 != 0"))
     }
 }
@@ -61,12 +65,12 @@ impl Round {
 
 /// The operator that is participating in the consensus instance.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, From, Deref)]
-pub struct OperatorId(pub usize);
+pub struct OperatorId(usize);
 
 /// The instance height behaves like an "ID" for the QBFT instance. It is used to uniquely identify
 /// different instances, that have the same operator id.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, From, Deref)]
-pub struct InstanceHeight(pub usize);
+pub struct InstanceHeight(usize);
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]

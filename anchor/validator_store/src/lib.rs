@@ -17,7 +17,7 @@ use ssv_types::message::{
     DATA_VERSION_ALTAIR, DATA_VERSION_BELLATRIX, DATA_VERSION_CAPELLA, DATA_VERSION_DENEB,
     DATA_VERSION_PHASE0, DATA_VERSION_UNKNOWN,
 };
-use ssv_types::{Cluster, OperatorId};
+use ssv_types::{Cluster, OperatorId, ValidatorMetadata};
 use std::fmt::Debug;
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -53,9 +53,11 @@ use validator_store::{
 /// This acts as a maximum safe-guard against clock drift.
 const SLASHING_PROTECTION_HISTORY_EPOCHS: u64 = 512;
 
+#[derive(Clone)]
 struct InitializedCluster {
-    pub cluster: Cluster,
-    pub decrypted_key_share: SecretKey,
+    cluster: Cluster,
+    validator_metadata: ValidatorMetadata,
+    decrypted_key_share: SecretKey,
 }
 
 pub struct AnchorValidatorStore<T: SlotClock + 'static, E: EthSpec> {
@@ -93,13 +95,15 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
     pub fn add_cluster(
         &self,
         cluster: Cluster,
+        validator_metadata: ValidatorMetadata,
         decrypted_key_share: SecretKey,
     ) -> Result<(), Error> {
-        let pubkey_bytes = cluster.validator_metadata.validator_pubkey.compress();
+        let pubkey_bytes = validator_metadata.public_key.compress();
         self.clusters.insert(
             pubkey_bytes,
             InitializedCluster {
                 cluster,
+                validator_metadata,
                 decrypted_key_share,
             },
         );
@@ -108,10 +112,10 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
             .map_err(Error::Slashable)
     }
 
-    fn cluster(&self, validator_pubkey: PublicKeyBytes) -> Result<Cluster, Error> {
+    fn cluster(&self, validator_pubkey: PublicKeyBytes) -> Result<InitializedCluster, Error> {
         self.clusters
             .get(&validator_pubkey)
-            .map(|c| c.cluster.clone())
+            .map(|c| c.value().clone())
             .ok_or(Error::UnknownPubkey(validator_pubkey))
     }
 
@@ -126,13 +130,9 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
 
     async fn collect_signature(
         &self,
-        validator_pubkey: PublicKeyBytes,
+        cluster: InitializedCluster,
         signing_root: Hash256,
     ) -> Result<Signature, Error> {
-        let Some(cluster) = self.clusters.get(&validator_pubkey) else {
-            return Err(Error::UnknownPubkey(validator_pubkey));
-        };
-
         let collector = self.signature_collector.sign_and_collect(
             SignatureRequest {
                 cluster_id: cluster.cluster.cluster_id,
@@ -145,11 +145,8 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
                     .map_err(SpecificError::from)?,
             },
             self.operator_id,
-            cluster.decrypted_key_share.clone(),
+            cluster.decrypted_key_share,
         );
-
-        // free lock before invoking future
-        drop(cluster);
         Ok((*collector.await.map_err(SpecificError::from)?).clone())
     }
 
@@ -192,7 +189,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
                         r#type: BEACON_ROLE_PROPOSER,
                         pub_key: validator_pubkey,
                         slot: block.slot().as_usize().into(),
-                        validator_index: cluster.validator_metadata.validator_index,
+                        validator_index: cluster.validator_metadata.index,
                         committee_index: 0,
                         committee_length: 0,
                         committees_at_slot: 0,
@@ -209,7 +206,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
                     },
                     data_ssz: Box::new(wrapper(block)),
                 },
-                &cluster,
+                &cluster.cluster,
             )
             .await
             .map_err(SpecificError::from)?;
@@ -240,7 +237,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
 
         let signing_root = block.signing_root(domain_hash);
         let signature = self
-            .collect_signature(validator_pubkey, signing_root)
+            .collect_signature(self.cluster(validator_pubkey)?, signing_root)
             .await?;
         Ok(SignedBeaconBlock::from_block(block, signature))
     }
@@ -260,11 +257,11 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
             .qbft_manager
             .decide_instance(
                 CommitteeInstanceId {
-                    committee: cluster.cluster_id,
+                    committee: cluster.cluster.cluster_id,
                     instance_height: slot.as_usize().into(),
                 },
                 vote,
-                &cluster,
+                &cluster.cluster,
             )
             .await
             .map_err(SpecificError::from)?;
@@ -275,9 +272,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
 
         let domain = self.get_domain(epoch, Domain::SyncCommittee);
         let signing_root = data.block_root.signing_root(domain);
-        let signature = self
-            .collect_signature(*validator_pubkey, signing_root)
-            .await?;
+        let signature = self.collect_signature(cluster, signing_root).await?;
 
         Ok(SyncCommitteeMessage {
             slot,
@@ -330,7 +325,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
                         r#type: BEACON_ROLE_SYNC_COMMITTEE_CONTRIBUTION,
                         pub_key: aggregator_pubkey,
                         slot,
-                        validator_index: cluster.validator_metadata.validator_index,
+                        validator_index: cluster.validator_metadata.index,
                         committee_index: 0,
                         committee_length: 0,
                         committees_at_slot: 0,
@@ -340,7 +335,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
                     version: DATA_VERSION_PHASE0,
                     data_ssz: Box::new(DataSsz::Contributions(data)),
                 },
-                &cluster,
+                &cluster.cluster,
             )
             .await;
         let data = match completed {
@@ -356,16 +351,19 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
         let domain_hash = self.get_domain(epoch, Domain::ContributionAndProof);
         let signing_futures = data
             .into_iter()
-            .map(|contribution| async move {
-                let message = ContributionAndProof {
-                    aggregator_index,
-                    contribution: contribution.contribution,
-                    selection_proof: contribution.selection_proof_sig,
-                };
-                let signing_root = message.signing_root(domain_hash);
-                self.collect_signature(aggregator_pubkey, signing_root)
-                    .await
-                    .map(|signature| SignedContributionAndProof { message, signature })
+            .map(|contribution| {
+                let cluster = cluster.clone();
+                async move {
+                    let message = ContributionAndProof {
+                        aggregator_index,
+                        contribution: contribution.contribution,
+                        selection_proof: contribution.selection_proof_sig,
+                    };
+                    let signing_root = message.signing_root(domain_hash);
+                    self.collect_signature(cluster, signing_root)
+                        .await
+                        .map(|signature| SignedContributionAndProof { message, signature })
+                }
             })
             .collect::<Vec<_>>();
 
@@ -458,7 +456,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
     fn validator_index(&self, pubkey: &PublicKeyBytes) -> Option<u64> {
         self.clusters
             .get(pubkey)
-            .map(|v| v.cluster.validator_metadata.validator_index.0 as u64)
+            .map(|v| v.validator_metadata.index.0 as u64)
     }
 
     fn voting_pubkeys<I, F>(&self, _filter_func: F) -> I
@@ -482,13 +480,13 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
     fn graffiti(&self, validator_pubkey: &PublicKeyBytes) -> Option<Graffiti> {
         self.clusters
             .get(validator_pubkey)
-            .map(|v| v.cluster.validator_metadata.graffiti)
+            .map(|v| v.validator_metadata.graffiti)
     }
 
     fn get_fee_recipient(&self, validator_pubkey: &PublicKeyBytes) -> Option<Address> {
         self.clusters
             .get(validator_pubkey)
-            .map(|v| v.cluster.validator_metadata.fee_recipient)
+            .map(|v| v.cluster.fee_recipient)
     }
 
     fn determine_builder_boost_factor(&self, _validator_pubkey: &PublicKeyBytes) -> Option<u64> {
@@ -502,7 +500,8 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
     ) -> Result<Signature, Error> {
         let domain_hash = self.get_domain(signing_epoch, Domain::Randao);
         let signing_root = signing_epoch.signing_root(domain_hash);
-        self.collect_signature(validator_pubkey, signing_root).await
+        self.collect_signature(self.cluster(validator_pubkey)?, signing_root)
+            .await
     }
 
     fn set_validator_index(&self, validator_pubkey: &PublicKeyBytes, index: u64) {
@@ -513,10 +512,10 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
                 "Trying to set index for unknown validator"
             ),
             Some(v) => {
-                if v.cluster.validator_metadata.validator_index.0 as u64 != index {
+                if v.validator_metadata.index.0 as u64 != index {
                     error!(
                         validator = validator_pubkey.as_hex_string(),
-                        expected = v.cluster.validator_metadata.validator_index.0,
+                        expected = v.validator_metadata.index.0,
                         actual = index,
                         "Mismatched validator index",
                     )
@@ -587,7 +586,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
             .qbft_manager
             .decide_instance(
                 CommitteeInstanceId {
-                    committee: cluster.cluster_id,
+                    committee: cluster.cluster.cluster_id,
                     instance_height: attestation.data().slot.as_usize().into(),
                 },
                 BeaconVote {
@@ -595,7 +594,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
                     source: attestation.data().source,
                     target: attestation.data().target,
                 },
-                &cluster,
+                &cluster.cluster,
             )
             .await
             .map_err(SpecificError::from)?;
@@ -621,9 +620,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         )?;
 
         let signing_root = attestation.data().signing_root(domain_hash);
-        let signature = self
-            .collect_signature(validator_pubkey, signing_root)
-            .await?;
+        let signature = self.collect_signature(cluster, signing_root).await?;
         attestation
             .add_signature(&signature, validator_committee_position)
             .map_err(Error::UnableToSignAttestation)?;
@@ -648,7 +645,10 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         let signing_root = validator_registration_data.signing_root(domain_hash);
 
         let signature = self
-            .collect_signature(validator_registration_data.pubkey, signing_root)
+            .collect_signature(
+                self.cluster(validator_registration_data.pubkey)?,
+                signing_root,
+            )
             .await?;
 
         Ok(SignedValidatorRegistrationData {
@@ -684,7 +684,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
                         r#type: BEACON_ROLE_AGGREGATOR,
                         pub_key: validator_pubkey,
                         slot: message.aggregate().data().slot,
-                        validator_index: cluster.validator_metadata.validator_index,
+                        validator_index: cluster.validator_metadata.index,
                         committee_index: message.aggregate().data().index,
                         // todo it seems the below are not needed (anymore?)
                         committee_length: 0,
@@ -695,7 +695,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
                     version: DATA_VERSION_PHASE0,
                     data_ssz: Box::new(DataSsz::AggregateAndProof(message)),
                 },
-                &cluster,
+                &cluster.cluster,
             )
             .await
             .map_err(SpecificError::from)?;
@@ -710,9 +710,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
 
         let domain_hash = self.get_domain(signing_epoch, Domain::AggregateAndProof);
         let signing_root = message.signing_root(domain_hash);
-        let signature = self
-            .collect_signature(validator_pubkey, signing_root)
-            .await?;
+        let signature = self.collect_signature(cluster, signing_root).await?;
 
         Ok(SignedAggregateAndProof::from_aggregate_and_proof(
             message, signature,
@@ -728,7 +726,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         let domain_hash = self.get_domain(epoch, Domain::SelectionProof);
         let signing_root = slot.signing_root(domain_hash);
 
-        self.collect_signature(validator_pubkey, signing_root)
+        self.collect_signature(self.cluster(validator_pubkey)?, signing_root)
             .await
             .map(SelectionProof::from)
     }
@@ -747,7 +745,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         }
         .signing_root(domain_hash);
 
-        self.collect_signature(*validator_pubkey, signing_root)
+        self.collect_signature(self.cluster(*validator_pubkey)?, signing_root)
             .await
             .map(SyncSelectionProof::from)
     }
@@ -840,8 +838,8 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
 
     fn proposal_data(&self, pubkey: &PublicKeyBytes) -> Option<ProposalData> {
         self.clusters.get(pubkey).map(|v| ProposalData {
-            validator_index: Some(v.cluster.validator_metadata.validator_index.0 as u64),
-            fee_recipient: Some(v.cluster.validator_metadata.fee_recipient),
+            validator_index: Some(v.validator_metadata.index.0 as u64),
+            fee_recipient: Some(v.cluster.fee_recipient),
             gas_limit: 29_999_998,    // TODO support scalooors
             builder_proposals: false, // TODO support MEVooors
         })

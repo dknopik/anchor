@@ -82,7 +82,7 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
     ) -> Result<Arc<Self>, QbftError> {
         let manager = Arc::new(QbftManager {
             processor,
-            operator_id: QbftOperatorId(operator_id.0 as usize),
+            operator_id: (*operator_id as usize).into(),
             slot_clock,
             validator_consensus_data_instances: DashMap::new(),
             beacon_vote_instances: DashMap::new(),
@@ -103,18 +103,18 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
         committee: &Cluster,
     ) -> Result<Completed<D>, QbftError> {
         let (result_sender, result_receiver) = oneshot::channel();
-        let mut config = ConfigBuilder::default();
-        config
-            .operator_id(self.operator_id)
-            .quorum_size(committee.cluster_members.len() - committee.faulty as usize)
-            .committee_members(
-                committee
-                    .cluster_members
-                    .iter()
-                    .map(|m| QbftOperatorId(m.operator_id.0 as usize))
-                    .collect(),
-            );
-        let config = initial.config(&mut config, &id)?;
+        let config = ConfigBuilder::new(
+            self.operator_id,
+            initial.instance_height(&id),
+            committee
+                .cluster_members
+                .iter()
+                .map(|&m| (*m as usize).into())
+                .collect(),
+        );
+        let config = config
+            .with_quorum_size(committee.cluster_members.len() - committee.faulty as usize)
+            .build()?;
         let sender = D::get_or_spawn_instance(self, id);
         self.processor.urgent_consensus.send_immediate(
             move |drop_on_finish: DropOnFinish| {
@@ -163,7 +163,7 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
             };
             let cutoff = slot.saturating_sub(QBFT_RETAIN_SLOTS);
             self.beacon_vote_instances
-                .retain(|k, _| k.instance_height.0 >= cutoff.as_usize())
+                .retain(|k, _| *k.instance_height >= cutoff.as_usize())
         }
     }
 }
@@ -194,11 +194,8 @@ pub trait QbftDecidable<T: SlotClock + 'static, E: EthSpec>:
         };
         ret
     }
-    fn config(
-        &self,
-        builder: &mut ConfigBuilder<DefaultLeaderFunction>,
-        id: &Self::Id,
-    ) -> Result<qbft::Config<DefaultLeaderFunction>, ConfigBuilderError>;
+
+    fn instance_height(&self, id: &Self::Id) -> InstanceHeight;
 }
 
 impl<T: SlotClock + 'static, E: EthSpec> QbftDecidable<T, E> for ValidatorConsensusData<E> {
@@ -207,12 +204,8 @@ impl<T: SlotClock + 'static, E: EthSpec> QbftDecidable<T, E> for ValidatorConsen
         &manager.validator_consensus_data_instances
     }
 
-    fn config(
-        &self,
-        builder: &mut ConfigBuilder<DefaultLeaderFunction>,
-        id: &Self::Id,
-    ) -> Result<qbft::Config<DefaultLeaderFunction>, ConfigBuilderError> {
-        builder.instance_height(id.instance_height).build()
+    fn instance_height(&self, id: &Self::Id) -> InstanceHeight {
+        id.instance_height
     }
 }
 
@@ -222,12 +215,8 @@ impl<T: SlotClock + 'static, E: EthSpec> QbftDecidable<T, E> for BeaconVote {
         &manager.beacon_vote_instances
     }
 
-    fn config(
-        &self,
-        builder: &mut ConfigBuilder<DefaultLeaderFunction>,
-        id: &Self::Id,
-    ) -> Result<qbft::Config<DefaultLeaderFunction>, ConfigBuilderError> {
-        builder.instance_height(id.instance_height).build()
+    fn instance_height(&self, id: &Self::Id) -> InstanceHeight {
+        id.instance_height
     }
 }
 
@@ -291,7 +280,7 @@ async fn qbft_instance<D: qbft::Data>(mut rx: UnboundedReceiver<QbftMessage<D>>)
                             instance.receive(message);
                         }
                         QbftInstance::Initialized {
-                            round_end: tokio::time::interval(instance.config().round_time),
+                            round_end: tokio::time::interval(instance.config().round_time()),
                             qbft: instance,
                             on_completed: vec![on_completed],
                         }

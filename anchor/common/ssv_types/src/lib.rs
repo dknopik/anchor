@@ -8,4 +8,5 @@ pub mod msgid;
 mod operator;
 mod qbft_msgid;
 mod share;
+mod sql_conversions;
 mod util;
