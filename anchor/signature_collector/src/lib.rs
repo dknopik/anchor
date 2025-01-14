@@ -191,10 +191,10 @@ async fn signature_collector(
                 // always insert to make sure we're not duplicated
                 match signature_share.entry(operator_id) {
                     hash_map::Entry::Vacant(entry) => {
-                        entry.insert(signature);
+                        entry.insert(*signature);
                     }
                     hash_map::Entry::Occupied(entry) => {
-                        if entry.get() != &signature {
+                        if entry.get() != &*signature {
                             error!(
                                 ?operator_id,
                                 "received conflicting signatures from operator"
@@ -224,22 +224,13 @@ async fn signature_collector(
     }
 }
 
-fn recover_signature(
-    shares: HashMap<OperatorId, Box<Signature>>,
-) -> Result<Signature, CollectionError> {
+fn recover_signature(shares: HashMap<OperatorId, Signature>) -> Result<Signature, CollectionError> {
     let (ids, signatures): (Vec<_>, Vec<_>) = shares
         .into_iter()
-        .map(|(k, s)| {
-            s.point()
-                .ok_or(CollectionError::EmptySignature)
-                .and_then(|s| KeyId::try_from(*k).map(|k| (k, *s)).map_err(Into::into))
-        })
+        .map(|(k, s)| KeyId::try_from(*k).map(|k| (k, s)))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .unzip();
 
-    Ok(Signature::from_point(
-        blst_lagrange::combine_signatures(&signatures, &ids)?,
-        false,
-    ))
+    Ok(blst_lagrange::combine_signatures(&signatures, &ids)?)
 }

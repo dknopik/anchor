@@ -4,5 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-blst = { workspace = true }
+bls = { workspace = true }
+blstrs_plus = { workspace = true, optional = true }
+vsss-rs = { workspace = true, optional = true }
+blst = { workspace = true, optional = true }
 rand = { workspace = true }
+
+[dev-dependencies]
+blst = { workspace = true }
+
+[features]
+default = []
+blsful = ["dep:blstrs_plus", "dep:vsss-rs"]
+blst = ["dep:blst"]
+blst_single_thread = ["blst"]
