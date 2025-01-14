@@ -232,14 +232,14 @@ fn recover_signature(
         .map(|(k, s)| {
             s.point()
                 .ok_or(CollectionError::EmptySignature)
-                .map(|s| (KeyId::from(*k), *s))
+                .and_then(|s| KeyId::try_from(*k).map(|k| (k, *s)).map_err(Into::into))
         })
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .unzip();
 
     Ok(Signature::from_point(
-        blst_lagrange::recover_signature(&signatures, &ids)?,
+        blst_lagrange::combine_signatures(&signatures, &ids)?,
         false,
     ))
 }
