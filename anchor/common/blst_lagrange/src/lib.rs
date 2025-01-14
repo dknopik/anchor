@@ -42,7 +42,10 @@ impl From<NonZeroU64> for KeyId {
         unsafe {
             let mut id = blst_fr::default();
             blst_fr_from_uint64(&mut id, &value.get());
-            KeyId { num: value.get(), fr: id }
+            KeyId {
+                num: value.get(),
+                fr: id,
+            }
         }
     }
 }
@@ -82,20 +85,21 @@ pub fn split_with_rng(
     let msk = once(key_to_fr(key))
         .chain(repeat_with(|| key_to_fr(&random_key(rng))).take((threshold - 1) as usize))
         .collect::<Vec<_>>();
-    ids.into_iter().map(|id| {
-        let mut intermediate = MaybeUninit::<blst_fr>::uninit();
-        unsafe {
-            let mut y = msk.last().copied().unwrap();
-            for i in (0..=(threshold - 2)).rev() {
-                blst_fr_mul(intermediate.as_mut_ptr(), &y, &id.fr);
-                blst_fr_add(&mut y, intermediate.as_ptr(), &msk[i as usize]);
+    ids.into_iter()
+        .map(|id| {
+            let mut intermediate = MaybeUninit::<blst_fr>::uninit();
+            unsafe {
+                let mut y = msk.last().copied().unwrap();
+                for i in (0..=(threshold - 2)).rev() {
+                    blst_fr_mul(intermediate.as_mut_ptr(), &y, &id.fr);
+                    blst_fr_add(&mut y, intermediate.as_ptr(), &msk[i as usize]);
+                }
+                let mut scalar = blst_scalar::default();
+                blst_scalar_from_fr(&mut scalar, &y);
+                Ok((id, SecretKey::from_scalar_unchecked(scalar)))
             }
-            let mut scalar = blst_scalar::default();
-            blst_scalar_from_fr(&mut scalar, &y);
-            Ok((id, SecretKey::from_scalar_unchecked(scalar)))
-        }
-    })
-    .collect()
+        })
+        .collect()
 }
 
 pub fn combine_signatures(signatures: &[Signature], ids: &[KeyId]) -> Result<Signature, Error> {
