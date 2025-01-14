@@ -90,9 +90,8 @@ impl Client {
             "Starting the Anchor client"
         );
 
-        let mut spec = Eth2Config::mainnet().spec;
-        // dirty hack to be able to connect to local kurtosis devnet
-        Arc::get_mut(&mut spec).unwrap().genesis_fork_version = [16, 0, 0, 56];
+        // TODO make configurable
+        let spec = Eth2Config::mainnet().spec;
 
         // Optionally start the metrics server.
         let http_metrics_shared_state = if config.http_metrics.enabled {

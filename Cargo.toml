@@ -98,7 +98,7 @@ validator_store = { git = "https://github.com/sigp/lighthouse", branch = "anchor
 version = { path = "anchor/common/version" }
 
 [profile.maxperf]
-codegen-units = 1
-incremental = false
 inherits = "release"
 lto = "fat"
+codegen-units = 1
+incremental = false
