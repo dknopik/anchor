@@ -8,10 +8,12 @@ members = [
     "anchor/common/ssv_types",
     "anchor/common/version",
     "anchor/database",
+    "anchor/eth",
     "anchor/http_api",
     "anchor/http_metrics",
     "anchor/network",
     "anchor/processor",
+    "anchor/qbft_manager",
     "anchor/signature_collector",
 ]
 resolver = "2"
@@ -19,42 +21,65 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 
-# NOTE: The block below is currently not sorted by `cargo sort`. Please keep sorted manually, especially during merges!
+# This table has three subsections: first the internal dependencies, then the lighthouse dependencies, then all other.
 [workspace.dependencies]
+blst_lagrange = { path = "anchor/common/blst_lagrange" }
+client = { path = "anchor/client" }
+database = { path = "anchor/database" }
+eth = { path = "anchor/eth" }
+http_api = { path = "anchor/http_api" }
+http_metrics = { path = "anchor/http_metrics" }
+network = { path = "anchor/network" }
+processor = { path = "anchor/processor" }
+qbft = { path = "anchor/common/qbft" }
+qbft_manager = { path = "anchor/common/qbft" }
+ssv_types = { path = "anchor/common/ssv_types" }
+version = { path = "anchor/common/version" }
+
+health_metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+lighthouse_network = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+sensitive_url = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+slot_clock = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+task_executor = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor", default-features = false, features = [
+    "tracing",
+] }
+types = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+unused_port = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+validator_metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+
+alloy = { version = "0.6.4", features = [
+    "sol-types",
+    "transports",
+    "json",
+    "contract",
+    "pubsub",
+    "provider-ws",
+    "rpc-types",
+    "rlp",
+] }
 async-channel = "1.9"
 axum = "0.7.7"
 base64 = "0.22.1"
 blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
-blst_lagrange = { path = "anchor/common/blst_lagrange" }
 clap = { version = "4.5.15", features = ["derive", "wrap_help"] }
-client = { path = "anchor/client" }
 dashmap = "6.1.0"
-database = { path = "anchor/database" }
 derive_more = { version = "1.0.0", features = ["full"] }
 dirs = "5.0.1"
 discv5 = "0.9.0"
 either = "1.13.0"
 futures = "0.3.30"
-health_metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
-http_api = { path = "anchor/http_api" }
-http_metrics = { path = "anchor/http_metrics" }
+hex = "0.4.3"
 hyper = "1.4"
-lighthouse_network = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
-metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
-network = { path = "anchor/network" }
+indexmap = "2.7.0"
 num_cpus = "1"
 openssl = "0.10.68"
 parking_lot = "0.12"
-processor = { path = "anchor/processor" }
-qbft = { path = "anchor/common/qbft" }
 rand = "0.8.5"
+reqwest = "0.12.12"
 rusqlite = "0.28.0"
-sensitive_url = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 serde = { version = "1.0.208", features = ["derive"] }
-slot_clock = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
-ssv_types = { path = "anchor/common/ssv_types" }
 strum = { version = "0.24", features = ["derive"] }
-task_executor = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor", default-features = false, features = [ "tracing", ] }
 tokio = { version = "1.39.2", features = [
     "rt",
     "rt-multi-thread",
@@ -65,16 +90,15 @@ tokio = { version = "1.39.2", features = [
 tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["fmt", "env-filter"] }
-types = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
-unused_port = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
-validator_metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
-version = { path = "anchor/common/version" }
+tree_hash = "0.8"
+tree_hash_derive = "0.8"
 
 [patch.crates-io]
 blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
 
 [profile.maxperf]
 inherits = "release"
-lto = "fat"
+
 codegen-units = 1
 incremental = false
+lto = "fat"
