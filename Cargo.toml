@@ -99,6 +99,7 @@ vsss-rs = "5.1.0"
 
 [patch.crates-io]
 blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
+# this is needed because the official release uses a precise version of blst, which conflicts with above line
 blstrs_plus = { git = "https://github.com/dknopik/blstrs", branch = "pls" }
 
 [profile.maxperf]
