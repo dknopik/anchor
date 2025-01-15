@@ -647,6 +647,32 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "types",
+]
+
+[[package]]
+name = "anchor_validator_store"
+version = "0.1.0"
+dependencies = [
+ "beacon_node_fallback",
+ "dashmap",
+ "eth2",
+ "futures",
+ "parking_lot",
+ "qbft",
+ "qbft_manager",
+ "safe_arith",
+ "signature_collector",
+ "slashing_protection",
+ "slot_clock",
+ "ssv_types",
+ "task_executor",
+ "tokio",
+ "tracing",
+ "types",
+ "validator_metrics",
+ "validator_services",
+ "validator_store",
 ]
 
 [[package]]
@@ -1164,6 +1190,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
+name = "beacon_node_fallback"
+version = "0.1.0"
+source = "git+https://github.com/sigp/lighthouse?branch=anchor#997991f5513f22bb240816c2e2400cf6a1819a0c"
+dependencies = [
+ "eth2",
+ "futures",
+ "itertools 0.10.5",
+ "serde",
+ "slot_clock",
+ "strum 0.24.1",
+ "task_executor",
+ "tokio",
+ "tracing",
+ "types",
+ "validator_metrics",
+]
+
+[[package]]
 name = "bimap"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1496,8 +1540,12 @@ dependencies = [
 name = "client"
 version = "0.1.0"
 dependencies = [
+ "anchor_validator_store",
+ "beacon_node_fallback",
  "clap",
  "dirs 5.0.1",
+ "eth2",
+ "eth2_config",
  "ethereum_hashing",
  "fdlimit",
  "http_api",
@@ -1506,13 +1554,21 @@ dependencies = [
  "network",
  "parking_lot",
  "processor",
+ "qbft_manager",
  "sensitive_url",
  "serde",
+ "signature_collector",
+ "slashing_protection",
+ "slot_clock",
+ "ssv_types",
  "strum 0.24.1",
  "task_executor",
  "tokio",
  "tracing",
+ "types",
  "unused_port",
+ "validator_metrics",
+ "validator_services",
  "version",
 ]
 
@@ -2944,6 +3000,17 @@ dependencies = [
  "tracing",
  "void",
  "web-time",
+]
+
+[[package]]
+name = "graffiti_file"
+version = "0.1.0"
+source = "git+https://github.com/sigp/lighthouse?branch=anchor#997991f5513f22bb240816c2e2400cf6a1819a0c"
+dependencies = [
+ "bls",
+ "serde",
+ "slog",
+ "types",
 ]
 
 [[package]]
@@ -7776,6 +7843,38 @@ version = "0.1.0"
 source = "git+https://github.com/sigp/lighthouse?branch=anchor#997991f5513f22bb240816c2e2400cf6a1819a0c"
 dependencies = [
  "metrics",
+]
+
+[[package]]
+name = "validator_services"
+version = "0.1.0"
+source = "git+https://github.com/sigp/lighthouse?branch=anchor#997991f5513f22bb240816c2e2400cf6a1819a0c"
+dependencies = [
+ "beacon_node_fallback",
+ "bls",
+ "eth2",
+ "futures",
+ "graffiti_file",
+ "logging",
+ "parking_lot",
+ "safe_arith",
+ "slot_clock",
+ "task_executor",
+ "tokio",
+ "tracing",
+ "tree_hash",
+ "types",
+ "validator_metrics",
+ "validator_store",
+]
+
+[[package]]
+name = "validator_store"
+version = "0.1.0"
+source = "git+https://github.com/sigp/lighthouse?branch=anchor#997991f5513f22bb240816c2e2400cf6a1819a0c"
+dependencies = [
+ "slashing_protection",
+ "types",
 ]
 
 [[package]]

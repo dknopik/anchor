@@ -14,6 +14,7 @@ members = [
     "anchor/processor",
     "anchor/qbft_manager",
     "anchor/signature_collector",
+    "anchor/validator_store",
 ]
 resolver = "2"
 
@@ -22,6 +23,7 @@ edition = "2021"
 
 # This table has three subsections: first the internal dependencies, then the lighthouse dependencies, then all other.
 [workspace.dependencies]
+anchor_validator_store = { path = "anchor/validator_store" }
 client = { path = "anchor/client" }
 database = { path = "anchor/database" }
 eth = { path = "anchor/eth" }
@@ -30,14 +32,20 @@ http_metrics = { path = "anchor/http_metrics" }
 network = { path = "anchor/network" }
 processor = { path = "anchor/processor" }
 qbft = { path = "anchor/common/qbft" }
-qbft_manager = { path = "anchor/common/qbft" }
+qbft_manager = { path = "anchor/qbft_manager" }
+signature_collector = { path = "anchor/signature_collector" }
 ssv_types = { path = "anchor/common/ssv_types" }
 version = { path = "anchor/common/version" }
 
+beacon_node_fallback = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
+eth2 = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
+eth2_config = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 health_metrics = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 lighthouse_network = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 metrics = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
+safe_arith = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 sensitive_url = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
+slashing_protection = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 slot_clock = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 task_executor = { git = "https://github.com/sigp/lighthouse", branch = "anchor", default-features = false, features = [
     "tracing",
@@ -45,6 +53,8 @@ task_executor = { git = "https://github.com/sigp/lighthouse", branch = "anchor",
 types = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 unused_port = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 validator_metrics = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
+validator_services = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
+validator_store = { git = "https://github.com/sigp/lighthouse", branch = "anchor" }
 
 alloy = { version = "0.6.4", features = [
     "sol-types",
