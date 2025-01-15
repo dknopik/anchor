@@ -9,6 +9,7 @@ blstrs_plus = { workspace = true, optional = true }
 vsss-rs = { workspace = true, optional = true }
 blst = { workspace = true, optional = true }
 rand = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 blst = { workspace = true }

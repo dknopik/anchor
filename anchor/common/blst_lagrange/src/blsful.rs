@@ -6,6 +6,7 @@ use std::num::NonZeroU64;
 use vsss_rs::{
     shamir, IdentifierPrimeField, ParticipantIdGeneratorType, ReadableShareSet, ValueGroup,
 };
+use zeroize::Zeroizing;
 
 #[derive(Debug, Clone)]
 pub struct KeyId {
@@ -63,17 +64,17 @@ pub fn split_with_rng(
 
     let ids = ids.into_iter().map(|k| k.identifier).collect::<Vec<_>>();
 
-    let result = shamir::split_secret_with_participant_generator(
+    let result = Zeroizing::new(shamir::split_secret_with_participant_generator(
         threshold as usize,
         ids.len(),
         &key,
         rng,
         &[ParticipantIdGeneratorType::List { list: &ids }],
     )
-    .map_err(|_| Error::InternalError)?;
+    .map_err(|_| Error::InternalError)?);
 
     result
-        .into_iter()
+        .iter()
         .map(|(identifier, share)| {
             bls::SecretKey::deserialize(&share.0.to_be_bytes())
                 .map_err(|_| Error::InternalError)
@@ -83,7 +84,7 @@ pub fn split_with_rng(
                     (
                         KeyId {
                             num: u64::from_be_bytes((&bytes[24..]).try_into().unwrap()),
-                            identifier,
+                            identifier: identifier.clone(),
                         },
                         sk,
                     )

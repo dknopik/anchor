@@ -7,6 +7,7 @@ use rand::prelude::*;
 use std::iter::{once, repeat_with};
 use std::mem::MaybeUninit;
 use std::num::NonZeroU64;
+use zeroize::Zeroizing;
 
 #[derive(Debug, Clone)]
 pub struct KeyId {
@@ -72,23 +73,30 @@ pub fn split_with_rng(
         return Err(Error::InvalidThreshold);
     }
 
-    let msk = once(Ok(key_to_fr(key)))
-        .chain(
-            repeat_with(|| random_key(rng).map(|sk| key_to_fr(sk.point())))
-                .take((threshold - 1) as usize),
-        )
-        .collect::<Result<Vec<_>, _>>()?;
+    // MaybeUninit needed to make `Zeroizing` work
+    let msk = Zeroizing::new(
+        once(Ok(MaybeUninit::new(key_to_fr(key))))
+            .chain(
+                repeat_with(|| random_key(rng).map(|sk| MaybeUninit::new(key_to_fr(sk.point()))))
+                    .take((threshold - 1) as usize),
+            )
+            .collect::<Result<Vec<_>, _>>()?,
+    );
     ids.into_iter()
         .map(|id| {
             let mut intermediate = MaybeUninit::<blst_fr>::uninit();
             unsafe {
-                let mut y = msk.last().copied().unwrap();
+                let mut y = (*msk).last().copied().unwrap();
                 for i in (0..=(threshold - 2)).rev() {
-                    blst_fr_mul(intermediate.as_mut_ptr(), &y, &id.fr);
-                    blst_fr_add(&mut y, intermediate.as_ptr(), &msk[i as usize]);
+                    blst_fr_mul(intermediate.as_mut_ptr(), y.as_ptr(), &id.fr);
+                    blst_fr_add(
+                        y.as_mut_ptr(),
+                        intermediate.as_ptr(),
+                        msk[i as usize].as_ptr(),
+                    );
                 }
                 let mut scalar = blst_scalar::default();
-                blst_scalar_from_fr(&mut scalar, &y);
+                blst_scalar_from_fr(&mut scalar, y.as_ptr());
                 Ok((
                     id,
                     bls::SecretKey::from_point(SecretKey::from_scalar_unchecked(scalar)),
