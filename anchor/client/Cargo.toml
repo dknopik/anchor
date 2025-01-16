@@ -11,10 +11,13 @@ path = "src/lib.rs"
 [dependencies]
 anchor_validator_store = { workspace = true }
 beacon_node_fallback = { workspace = true }
+bls = { workspace = true }
 clap = { workspace = true }
 dirs = { workspace = true }
 eth2 = { workspace = true }
 eth2_config = { workspace = true }
+eth2_wallet = { workspace = true }
+eth2_network_config = { workspace = true }
 ethereum_hashing = "0.7.0"
 fdlimit = "0.3"
 http_api = { workspace = true }

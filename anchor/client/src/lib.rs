@@ -3,26 +3,34 @@
 mod cli;
 pub mod config;
 
-use anchor_validator_store::AnchorValidatorStore;
+use anchor_validator_store::{AnchorValidatorStore, InitializedCluster};
 use beacon_node_fallback::{
     start_fallback_updater_service, ApiTopic, BeaconNodeFallback, CandidateBeaconNode,
 };
+use bls::generics::GenericPublicKeyBytes;
+use bls::{PublicKey, SecretKey};
 pub use cli::Anchor;
 use config::Config;
 use eth2::reqwest::{Certificate, ClientBuilder};
 use eth2::{BeaconNodeHttpClient, Timeouts};
 use eth2_config::Eth2Config;
+use eth2_network_config::Eth2NetworkConfig;
+use eth2_wallet::bip39::{Language, Mnemonic, Seed};
+use eth2_wallet::{recover_validator_secret_from_mnemonic, KeyType};
 use network::Network;
 use parking_lot::RwLock;
 use qbft_manager::QbftManager;
 use sensitive_url::SensitiveUrl;
 use signature_collector::SignatureCollectorManager;
 use slot_clock::{SlotClock, SystemTimeSlotClock};
-use ssv_types::OperatorId;
+use ssv_types::{
+    Cluster, ClusterId, ClusterMember, OperatorId, Share, ValidatorIndex, ValidatorMetadata,
+};
 use std::fs::File;
 use std::io::Read;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use task_executor::TaskExecutor;
@@ -30,7 +38,7 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
-use types::{EthSpec, Hash256};
+use types::{Address, EthSpec, Graffiti, Hash256};
 use validator_metrics::set_gauge;
 use validator_services::attestation_service::AttestationServiceBuilder;
 use validator_services::block_service::BlockServiceBuilder;
@@ -61,7 +69,7 @@ pub struct Client {}
 
 impl Client {
     /// Runs the Anchor Client
-    pub async fn run<E: EthSpec>(executor: TaskExecutor, config: Config) -> Result<(), String> {
+    pub async fn run<E: EthSpec>(executor: TaskExecutor, mut config: Config) -> Result<(), String> {
         // Attempt to raise soft fd limit. The behavior is OS specific:
         // `linux` - raise soft fd limit to hard
         // `macos` - raise soft fd limit to `min(kernel limit, hard fd limit)`
@@ -86,9 +94,11 @@ impl Client {
             "Starting the Anchor client"
         );
 
-        let mut spec = Eth2Config::mainnet().spec;
-        // dirty hack to be able to connect to local kurtosis devnet
-        Arc::get_mut(&mut spec).unwrap().genesis_fork_version = [16, 0, 0, 56];
+        let mut spec = Arc::new(Eth2NetworkConfig::constant("holesky")
+            .unwrap()
+            .unwrap()
+            .chain_spec::<E>()
+            .unwrap());
 
         // Optionally start the metrics server.
         let http_metrics_shared_state = if config.http_metrics.enabled {
@@ -180,6 +190,11 @@ impl Client {
             ))
         };
 
+        config.beacon_nodes =
+            vec![
+                SensitiveUrl::parse("<your BN url here>").unwrap(),
+            ];
+
         let beacon_nodes: Vec<BeaconNodeHttpClient> = config
             .beacon_nodes
             .iter()
@@ -266,12 +281,15 @@ impl Client {
         // Start the processor
         let processor_senders = processor::spawn(config.processor, executor.clone());
 
+        // todo get actual id
+        let pseudo_operator_id = OperatorId(123);
+
         // Create the processor-adjacent managers
         let signature_collector =
             Arc::new(SignatureCollectorManager::new(processor_senders.clone()));
         let qbft_manager = Arc::new(QbftManager::new(
             processor_senders.clone(),
-            OperatorId(1),
+            pseudo_operator_id,
             slot_clock.clone(),
         ));
 
@@ -281,8 +299,31 @@ impl Client {
             qbft_manager,
             spec.clone(),
             genesis_validators_root,
-            OperatorId(123),
+            pseudo_operator_id,
         ));
+
+        let pubkey = GenericPublicKeyBytes::from_str("<your validator pub key here>").unwrap();
+        let generic_key: PublicKey = (&pubkey).try_into().unwrap();
+        validator_store.add_cluster(pubkey, InitializedCluster {
+            cluster: Cluster {
+                cluster_id: ClusterId(321),
+                cluster_members: vec![ClusterMember {
+                    operator_id: pseudo_operator_id,
+                    cluster_id: ClusterId(321),
+                    share: Share { share_pubkey: generic_key.clone(), encrypted_private_key: [0; 256] },
+                }],
+                faulty: 0,
+                liquidated: false,
+                validator_metadata: ValidatorMetadata {
+                    validator_index: ValidatorIndex(1897326),
+                    validator_pubkey: generic_key,
+                    fee_recipient: Address::from_str("<your eth address here>").unwrap(),
+                    graffiti: Graffiti::from(<[u8; 32]>::try_from("Your graffiti here              ".as_bytes()).unwrap()),
+                    owner: Address::from_str("<your eth address here>").unwrap(),
+                },
+            },
+            decrypted_key_share: SecretKey::deserialize(recover_validator_secret_from_mnemonic(Seed::new(&Mnemonic::from_phrase("<your validator seed phrase here>", Language::English).unwrap(), "").as_bytes(), 0, KeyType::Voting).unwrap().0.as_bytes()).unwrap()
+        });
 
         let duties_service = Arc::new(
             DutiesServiceBuilder::new()

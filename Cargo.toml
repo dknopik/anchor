@@ -31,6 +31,7 @@ anchor_validator_store = { path = "anchor/validator_store" }
 ssv_types = { path = "anchor/common/ssv_types" }
 signature_collector = { path = "anchor/signature_collector" }
 qbft_manager = { path = "anchor/qbft_manager" }
+bls = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 lighthouse_network = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 task_executor = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store", default-features = false, features = [ "tracing", ] }
 metrics = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
@@ -42,6 +43,8 @@ types = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-va
 validator_services = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 eth2_config = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 eth2 = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
+eth2_wallet = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
+eth2_network_config = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 validator_store = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 beacon_node_fallback = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }
 safe_arith = { git = "https://github.com/dknopik/lighthouse", branch = "modularize-validator-store" }

@@ -115,6 +115,11 @@ impl<F: LeaderFunction + Clone> ConfigBuilder<F> {
         self
     }
 
+    pub fn committee_members(&mut self, committee_members: HashSet<OperatorId>) -> &mut Self {
+        self.config.committee_members = committee_members;
+        self
+    }
+
     pub fn quorum_size(&mut self, quorum_size: usize) -> &mut Self {
         self.config.quorum_size = quorum_size;
         self

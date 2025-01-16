@@ -29,7 +29,7 @@ impl LeaderFunction for DefaultLeaderFunction {
         instance_height: InstanceHeight,
         committee_size: usize,
     ) -> bool {
-        *operator_id == ((*round + *instance_height) % committee_size).into()
+        true
     }
 }
 

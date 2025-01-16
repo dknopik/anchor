@@ -1050,10 +1050,13 @@ version = "0.1.0"
 dependencies = [
  "anchor_validator_store",
  "beacon_node_fallback",
+ "bls",
  "clap",
  "dirs 5.0.1",
  "eth2",
  "eth2_config",
+ "eth2_network_config",
+ "eth2_wallet",
  "ethereum_hashing",
  "fdlimit",
  "http_api",
@@ -1997,6 +2000,21 @@ dependencies = [
  "types",
  "url",
  "zip",
+]
+
+[[package]]
+name = "eth2_wallet"
+version = "0.1.0"
+source = "git+https://github.com/dknopik/lighthouse?branch=modularize-validator-store#e0da923c27a9ceac603e937ffb8c979d7775a9e0"
+dependencies = [
+ "eth2_key_derivation",
+ "eth2_keystore",
+ "rand",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "tiny-bip39",
+ "uuid",
 ]
 
 [[package]]
@@ -6642,6 +6660,25 @@ checksum = "2834e6017e3e5e4b9834939793b282bc03b37a3336245fa820e35e233e2a85de"
 dependencies = [
  "num-conv",
  "time-core",
+]
+
+[[package]]
+name = "tiny-bip39"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62cc94d358b5a1e84a5cb9109f559aa3c4d634d2b1b4de3d0fa4adc7c78e2861"
+dependencies = [
+ "anyhow",
+ "hmac 0.12.1",
+ "once_cell",
+ "pbkdf2 0.11.0",
+ "rand",
+ "rustc-hash 1.1.0",
+ "sha2 0.10.8",
+ "thiserror 1.0.69",
+ "unicode-normalization",
+ "wasm-bindgen",
+ "zeroize",
 ]
 
 [[package]]

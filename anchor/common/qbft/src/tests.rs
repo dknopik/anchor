@@ -2,9 +2,9 @@
 //!
 //! These test individual components and also provide full end-to-end tests of the entire protocol.
 
-use std::cell::RefCell;
 use super::*;
 use crate::validation::{validate_data, ValidatedData};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 use tracing_subscriber::filter::EnvFilter;
@@ -31,9 +31,7 @@ impl Default for TestQBFTCommitteeBuilder {
             ..Default::default()
         };
 
-        TestQBFTCommitteeBuilder {
-            config,
-        }
+        TestQBFTCommitteeBuilder { config }
     }
 }
 
@@ -97,13 +95,16 @@ fn construct_and_run_committee<D: Data + Default + 'static>(
         let id = OperatorId::from(id);
         // Creates a new instance
         config.operator_id = id;
-        let mut instance = Qbft::new(config.clone(), validated_data.clone(), move |message| msg_queue.borrow_mut().push_back((id, message)));
+        let mut instance = Qbft::new(config.clone(), validated_data.clone(), move |message| {
+            msg_queue.borrow_mut().push_back((id, message))
+        });
         instance.start_round();
         instances.insert(id, instance);
     }
 
     TestQBFTCommittee {
-        msg_queue, instances
+        msg_queue,
+        instances,
     }
 }
 
@@ -115,7 +116,11 @@ impl<D: Default + Data, S: FnMut(Message<D>)> TestQBFTCommittee<D, S> {
                 // we are done!
                 return;
             };
-            for instance in self.instances.iter_mut().filter_map(|(id, instance)| (id.0 != sender.0).then_some(instance)) {
+            for instance in self
+                .instances
+                .iter_mut()
+                .filter_map(|(id, instance)| (id.0 != sender.0).then_some(instance))
+            {
                 instance.receive(msg.clone());
             }
         }

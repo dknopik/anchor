@@ -40,9 +40,9 @@ use validator_store::{
     DoppelgangerStatus, Error as ValidatorStoreError, ProposalData, SignBlock, ValidatorStore,
 };
 
-struct InitializedCluster {
-    cluster: Cluster,
-    decrypted_key_share: SecretKey,
+pub struct InitializedCluster {
+    pub cluster: Cluster,
+    pub decrypted_key_share: SecretKey,
 }
 
 pub struct AnchorValidatorStore<T: SlotClock + 'static, E: EthSpec> {
@@ -184,6 +184,10 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
             Completed::Success(data) => data,
         };
         Ok(*data.data_ssz)
+    }
+
+    pub fn add_cluster(&self, public_key_bytes: PublicKeyBytes, cluster: InitializedCluster) {
+        self.clusters.insert(public_key_bytes, cluster);
     }
 }
 

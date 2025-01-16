@@ -7,6 +7,7 @@ use qbft::{
 use slot_clock::SlotClock;
 use ssv_types::message::{BeaconVote, ValidatorConsensusData};
 use ssv_types::{Cluster, ClusterId, OperatorId};
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use tokio::select;
@@ -83,7 +84,14 @@ impl<T: SlotClock, E: EthSpec> QbftManager<T, E> {
         config
             .operator_id(self.operator_id)
             .committee_size(committee.cluster_members.len())
-            .quorum_size(committee.cluster_members.len() - committee.faulty as usize);
+            .quorum_size(committee.cluster_members.len() - committee.faulty as usize)
+            .committee_members(
+                committee
+                    .cluster_members
+                    .iter()
+                    .map(|member| QbftOperatorId(member.operator_id.0 as usize))
+                    .collect(),
+            );
         let config = initial.config(&mut config, &id)?;
         let sender = D::get_or_spawn_instance(self, id);
         self.processor.urgent_consensus.send_immediate(
