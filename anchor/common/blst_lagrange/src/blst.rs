@@ -7,7 +7,6 @@ use rand::prelude::*;
 use std::iter::{once, repeat_with};
 use std::mem::MaybeUninit;
 use std::num::NonZeroU64;
-use std::ptr;
 use zeroize::Zeroizing;
 
 #[derive(Debug, Clone)]
@@ -121,12 +120,12 @@ pub fn combine_signatures(signatures: &[Signature], ids: &[KeyId]) -> Result<Sig
         .collect::<Result<Vec<_>, _>>()?;
 
     // intermediates.
-    let mut ifr = MaybeUninit::<blst_fr>::uninit();
-    let mut is = MaybeUninit::<blst_scalar>::uninit();
+    let mut ifr = blst_fr::default();
+    let mut is = blst_scalar::default();
 
     let zero = unsafe {
-        blst_fr_from_uint64(ifr.as_mut_ptr(), &0);
-        ifr.assume_init()
+        blst_fr_from_uint64(&mut ifr, &0);
+        ifr
     };
 
     let mut numerator = ids[0].clone().fr;
@@ -145,17 +144,17 @@ pub fn combine_signatures(signatures: &[Signature], ids: &[KeyId]) -> Result<Sig
             let mut denominator = id_i.fr;
             for id_j in ids.iter() {
                 if id_i as *const KeyId != id_j as *const KeyId {
-                    blst_fr_sub(ifr.as_mut_ptr(), &id_j.fr, &id_i.fr);
-                    if ifr.assume_init_ref() == &zero {
+                    blst_fr_sub(&mut ifr, &id_j.fr, &id_i.fr);
+                    if ifr == zero {
                         return Err(Error::RepeatedId);
                     }
-                    blst_fr_mul(&mut denominator, &denominator, ifr.as_ptr());
+                    blst_fr_mul(&mut denominator, &denominator, &ifr);
                 }
             }
             blst_fr_inverse(&mut denominator, &denominator);
-            blst_fr_mul(ifr.as_mut_ptr(), &denominator, &numerator);
-            blst_scalar_from_fr(is.as_mut_ptr(), ifr.as_ptr());
-            d.extend(is.assume_init_ref().b);
+            blst_fr_mul(&mut ifr, &denominator, &numerator);
+            blst_scalar_from_fr(&mut is, &ifr);
+            d.extend(is.b);
         }
     }
 
@@ -171,8 +170,8 @@ fn mult(signatures: &[min_pk::Signature], d: &[u8]) -> min_pk::Signature {
 fn mult(signatures: &[min_pk::Signature], d: &[u8]) -> min_pk::Signature {
     let mut ret = blst_p2::default();
     let mut ret_affine = blst_p2_affine::default();
-    let p: [*const blst_p2_affine; 2] = [<&blst_p2_affine>::from(&signatures[0]), ptr::null()];
-    let s: [*const u8; 2] = [&d[0], ptr::null()];
+    let p: [*const blst_p2_affine; 2] = [<&blst_p2_affine>::from(&signatures[0]), std::ptr::null()];
+    let s: [*const u8; 2] = [&d[0], std::ptr::null()];
     unsafe {
         let mut scratch: Vec<u64> =
             Vec::with_capacity(blst_p2s_mult_pippenger_scratch_sizeof(signatures.len()) / 8);
