@@ -15,6 +15,7 @@ members = [
     "anchor/processor",
     "anchor/qbft_manager",
     "anchor/signature_collector",
+    "anchor/validator_store",
 ]
 resolver = "2"
 
@@ -23,6 +24,7 @@ edition = "2021"
 
 # This table has three subsections: first the internal dependencies, then the lighthouse dependencies, then all other.
 [workspace.dependencies]
+anchor_validator_store = { path = "anchor/validator_store" }
 blst_lagrange = { path = "anchor/common/blst_lagrange" }
 client = { path = "anchor/client" }
 database = { path = "anchor/database" }
@@ -32,15 +34,21 @@ http_metrics = { path = "anchor/http_metrics" }
 network = { path = "anchor/network" }
 processor = { path = "anchor/processor" }
 qbft = { path = "anchor/common/qbft" }
-qbft_manager = { path = "anchor/common/qbft" }
+qbft_manager = { path = "anchor/qbft_manager" }
+signature_collector = { path = "anchor/signature_collector" }
 ssv_types = { path = "anchor/common/ssv_types" }
 version = { path = "anchor/common/version" }
 
+beacon_node_fallback = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 bls = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+eth2 = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+eth2_config = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 health_metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 lighthouse_network = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+safe_arith = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 sensitive_url = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+slashing_protection = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 slot_clock = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 task_executor = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor", default-features = false, features = [
     "tracing",
@@ -48,6 +56,8 @@ task_executor = { git = "https://github.com/dknopik/lighthouse", branch = "into-
 types = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 unused_port = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 validator_metrics = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+validator_services = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
+validator_store = { git = "https://github.com/dknopik/lighthouse", branch = "into-anchor" }
 
 alloy = { version = "0.6.4", features = [
     "sol-types",
@@ -62,7 +72,6 @@ alloy = { version = "0.6.4", features = [
 async-channel = "1.9"
 axum = "0.7.7"
 base64 = "0.22.1"
-blsful = "3.0.0-pre8"
 blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
 blstrs_plus = { git = "https://github.com/dknopik/blstrs", branch = "pls" }
 clap = { version = "4.5.15", features = ["derive", "wrap_help"] }
