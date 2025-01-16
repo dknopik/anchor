@@ -34,9 +34,9 @@ pub fn split(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bls::Hash256;
     use std::hint::black_box;
     use std::time::Instant;
-    use bls::Hash256;
 
     #[test]
     fn test_basic_often() {
@@ -130,6 +130,9 @@ mod tests {
         for _ in 0..1_000 {
             black_box(combine_signatures(&signatures, &ids[..threshold]).unwrap());
         }
-        println!("took {} ms for threshold = {threshold}", timing.elapsed().as_millis());
+        println!(
+            "took {} ms for threshold = {threshold}",
+            timing.elapsed().as_millis()
+        );
     }
 }

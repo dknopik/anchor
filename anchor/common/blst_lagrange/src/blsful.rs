@@ -64,14 +64,16 @@ pub fn split_with_rng(
 
     let ids = ids.into_iter().map(|k| k.identifier).collect::<Vec<_>>();
 
-    let result = Zeroizing::new(shamir::split_secret_with_participant_generator(
-        threshold as usize,
-        ids.len(),
-        &key,
-        rng,
-        &[ParticipantIdGeneratorType::List { list: &ids }],
-    )
-    .map_err(|_| Error::InternalError)?);
+    let result = Zeroizing::new(
+        shamir::split_secret_with_participant_generator(
+            threshold as usize,
+            ids.len(),
+            &key,
+            rng,
+            &[ParticipantIdGeneratorType::List { list: &ids }],
+        )
+        .map_err(|_| Error::InternalError)?,
+    );
 
     result
         .iter()

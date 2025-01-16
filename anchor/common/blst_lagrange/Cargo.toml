@@ -5,10 +5,10 @@ edition = "2021"
 
 [dependencies]
 bls = { workspace = true }
-blstrs_plus = { workspace = true, optional = true }
-vsss-rs = { workspace = true, optional = true }
 blst = { workspace = true, optional = true }
+blstrs_plus = { workspace = true, optional = true }
 rand = { workspace = true }
+vsss-rs = { workspace = true, optional = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
