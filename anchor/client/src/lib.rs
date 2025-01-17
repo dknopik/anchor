@@ -10,10 +10,12 @@ use beacon_node_fallback::{
 };
 pub use cli::Anchor;
 use config::Config;
+use database::NetworkDatabase;
 use eth2::reqwest::{Certificate, ClientBuilder};
 use eth2::{BeaconNodeHttpClient, Timeouts};
-use eth2_config::Eth2Config;
 use network::Network;
+use openssl::pkey::Private;
+use openssl::rsa::Rsa;
 use parking_lot::RwLock;
 use qbft_manager::QbftManager;
 use sensitive_url::SensitiveUrl;
@@ -22,7 +24,7 @@ use slashing_protection::SlashingDatabase;
 use slot_clock::{SlotClock, SystemTimeSlotClock};
 use ssv_types::OperatorId;
 use std::fs::File;
-use std::io::Read;
+use std::io::{ErrorKind, Read, Write};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -32,13 +34,14 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
-use types::{EthSpec, Hash256};
+use types::{ChainSpec, EthSpec, Hash256};
 use validator_metrics::set_gauge;
 use validator_services::attestation_service::AttestationServiceBuilder;
 use validator_services::block_service::BlockServiceBuilder;
 use validator_services::duties_service;
 use validator_services::duties_service::DutiesServiceBuilder;
 use validator_services::preparation_service::PreparationServiceBuilder;
+use zeroize::Zeroizing;
 
 /// The filename within the `validators` directory that contains the slashing protection DB.
 const SLASHING_PROTECTION_FILENAME: &str = "slashing_protection.sqlite";
@@ -90,8 +93,18 @@ impl Client {
             "Starting the Anchor client"
         );
 
-        // TODO make configurable
-        let spec = Eth2Config::mainnet().spec;
+        let spec = Arc::new(config.eth2_network.chain_spec::<E>()?);
+
+        let key = read_or_generate_private_key(&config.data_dir.join("key.pem"))?;
+        let err = |e| format!("Unable to derive public key: {e:?}");
+        let pubkey = Rsa::from_public_components(
+            key.n().to_owned().map_err(err)?,
+            key.e().to_owned().map_err(err)?,
+        )
+        .map_err(err)?;
+
+        // Start the processor
+        let processor_senders = processor::spawn(config.processor, executor.clone());
 
         // Optionally start the metrics server.
         let http_metrics_shared_state = if config.http_metrics.enabled {
@@ -124,6 +137,12 @@ impl Client {
         let network = Network::try_new(&config.network, executor.clone()).await?;
         // Spawn the network listening task
         executor.spawn(network.run(), "network");
+
+        // Open database
+        let database = Arc::new(
+            NetworkDatabase::new(config.data_dir.join("anchor_db.sqlite").as_path(), &pubkey)
+                .map_err(|e| format!("Unable to open Anchor database: {e}"))?,
+        );
 
         // Initialize slashing protection.
         let slashing_db_path = config.data_dir.join(SLASHING_PROTECTION_FILENAME);
@@ -276,25 +295,71 @@ impl Client {
         let proposer_nodes = Arc::new(proposer_nodes);
         start_fallback_updater_service::<_, E>(executor.clone(), proposer_nodes.clone())?;
 
-        // Start the processor
-        let processor_senders = processor::spawn(config.processor, executor.clone());
+        // Wait until genesis has occurred.
+        wait_for_genesis(&beacon_nodes, genesis_time).await?;
 
-        // Create the processor-adjacent managers
+        // Start syncer
+        let mut syncer = eth::SsvEventSyncer::new(
+            database.clone(),
+            // TODO this is very hacky, but `eth::Config` has a TODO anyways
+            eth::Config {
+                http_url: config
+                    .execution_nodes
+                    .first()
+                    .ok_or("No execution node http url specified")?
+                    .full
+                    .to_string(),
+                ws_url: config
+                    .execution_nodes
+                    .get(1)
+                    .ok_or("No execution node wss url specified")?
+                    .full
+                    .to_string(),
+                beacon_url: "".to_string(), // this one is not actually needed :)
+                network: match spec.config_name.as_deref() {
+                    Some("mainnet") => eth::Network::Mainnet,
+                    Some("holesky") => eth::Network::Holesky,
+                    _ => return Err(format!("Unsupported network {:?}", spec.config_name)),
+                },
+            },
+        )
+        .await
+        .map_err(|e| format!("Unable to create syncer: {e}"))?;
+
+        executor.spawn(
+            async move {
+                if let Err(e) = syncer.sync().await {
+                    error!("Syncer failed: {e}");
+                }
+            },
+            "syncer",
+        );
+
+        // Wait until we have an operator id
+        let operator_id = wait_for_operator_id(&database, &spec).await;
+        info!(id = *operator_id, "Operator enabled");
+
+        // Create the signature collector
         let signature_collector =
             Arc::new(SignatureCollectorManager::new(processor_senders.clone()));
+
+        // Create the qbft manager
         let Ok(qbft_manager) =
-            QbftManager::new(processor_senders.clone(), OperatorId(1), slot_clock.clone())
+            QbftManager::new(processor_senders.clone(), operator_id, slot_clock.clone())
         else {
             return Err("Unable to initialize qbft manager".into());
         };
 
         let validator_store = Arc::new(AnchorValidatorStore::<_, E>::new(
+            database,
             signature_collector,
             qbft_manager,
             slashing_protection,
+            slot_clock.clone(),
             spec.clone(),
             genesis_validators_root,
-            OperatorId(123),
+            operator_id,
+            key,
         ));
 
         let duties_service = Arc::new(
@@ -363,9 +428,6 @@ impl Client {
         // whole epoch!
         let channel_capacity = E::slots_per_epoch() as usize;
         let (block_service_tx, block_service_rx) = mpsc::channel(channel_capacity);
-
-        // Wait until genesis has occurred.
-        wait_for_genesis(&beacon_nodes, genesis_time).await?;
 
         duties_service::start_update_service(duties_service.clone(), block_service_tx);
 
@@ -561,6 +623,19 @@ async fn poll_whilst_waiting_for_genesis(
     }
 }
 
+async fn wait_for_operator_id(
+    database: &Arc<NetworkDatabase>,
+    spec: &Arc<ChainSpec>,
+) -> OperatorId {
+    loop {
+        if let Some(id) = database.get_own_id() {
+            return id;
+        }
+        info!("Waiting for operator id");
+        sleep(Duration::from_secs(spec.seconds_per_slot)).await;
+    }
+}
+
 pub fn load_pem_certificate<P: AsRef<Path>>(pem_path: P) -> Result<Certificate, String> {
     let mut buf = Vec::new();
     File::open(&pem_path)
@@ -568,4 +643,45 @@ pub fn load_pem_certificate<P: AsRef<Path>>(pem_path: P) -> Result<Certificate, 
         .read_to_end(&mut buf)
         .map_err(|e| format!("Unable to read certificate file: {}", e))?;
     Certificate::from_pem(&buf).map_err(|e| format!("Unable to parse certificate: {}", e))
+}
+
+fn read_or_generate_private_key(path: &Path) -> Result<Rsa<Private>, String> {
+    match File::open(path) {
+        Ok(mut file) => {
+            // there seems to be an existing file, try to read key
+            let mut key_string = Zeroizing::new(String::with_capacity(
+                // it's important for Zeroizing to properly work that we don't reallocate
+                file.metadata()
+                    .map(|m| m.len() as usize + 1)
+                    .unwrap_or(10_000),
+            ));
+            file.read_to_string(&mut key_string)
+                .map_err(|e| format!("Unable to read private key at {path:?}: {e:?}"))?;
+            // TODO support passphrase
+            Rsa::private_key_from_pem(key_string.as_ref())
+                .map_err(|e| format!("Unable to read private key: {e:?}"))
+        }
+        Err(err) => {
+            // only try to write a new one if we get a "not found" error
+            // to not accidentally overwrite something the user might be able to recover
+            if err.kind() != ErrorKind::NotFound {
+                return Err(format!("Unable to read private key at {path:?}: {err:?}"));
+            }
+
+            info!(path = %path.as_os_str().to_string_lossy(), "Creating private key");
+
+            let mut file = File::create(path)
+                .map_err(|e| format!("Unable create private key file at {path:?}: {e:?}"))?;
+
+            let key = Rsa::generate(2048).map_err(|e| format!("Unable to generate key: {e:?}"))?;
+
+            file.write_all(&Zeroizing::new(
+                key.private_key_to_pem()
+                    .map_err(|e| format!("Unable serialize private key: {e:?}"))?,
+            ))
+            .map_err(|e| format!("Unable to write private key: {e:?}"))?;
+
+            Ok(key)
+        }
+    }
 }

@@ -283,6 +283,11 @@ impl NetworkDatabase {
         self.state.single_state.clusters.contains(id)
     }
 
+    /// Get the clusters we are member of
+    pub fn get_own_clusters(&self) -> &DashSet<ClusterId> {
+        &self.state.single_state.clusters
+    }
+
     /// Get the last block that has been fully processed by the database
     pub fn get_last_processed_block(&self) -> u64 {
         self.state
