@@ -1,5 +1,5 @@
 // from https://github.com/herumi/mcl/blob/3462cf0983bffb703a6e9f4623e47a26ec6e7fe5/include/mcl/lagrange.hpp
-use crate::Error;
+use crate::{random_key, Error};
 use bls::Signature;
 use blst::min_pk::SecretKey;
 use blst::*;
@@ -7,7 +7,20 @@ use rand::prelude::*;
 use std::iter::{once, repeat_with};
 use std::mem::MaybeUninit;
 use std::num::NonZeroU64;
+use std::sync::LazyLock;
 use zeroize::Zeroizing;
+
+static WARNING: LazyLock<()> = LazyLock::new(|| {
+    eprintln!(
+        r#"
+#######################################################################################
+### YOU ARE USING AN UNAUDITED, UNSAFE IMPLEMENTATION OF BLS LAGRANGE INTERPOLATION ###
+###                                                                                 ###
+###                           !!! DO NOT USE IN PRODUCTION !!!                      ###
+#######################################################################################
+"#
+    )
+});
 
 #[derive(Debug, Clone)]
 pub struct KeyId {
@@ -67,6 +80,7 @@ pub fn split_with_rng(
     ids: impl IntoIterator<Item = KeyId>,
     rng: &mut (impl CryptoRng + Rng),
 ) -> Result<Vec<(KeyId, bls::SecretKey)>, Error> {
+    LazyLock::force(&WARNING);
     let key = key.point();
 
     if threshold <= 1 {
@@ -107,6 +121,7 @@ pub fn split_with_rng(
 }
 
 pub fn combine_signatures(signatures: &[Signature], ids: &[KeyId]) -> Result<Signature, Error> {
+    LazyLock::force(&WARNING);
     if signatures.len() < 2 {
         return Err(Error::LessThanTwoSignatures);
     }
@@ -186,10 +201,4 @@ fn mult(signatures: &[min_pk::Signature], d: &[u8]) -> min_pk::Signature {
         blst_p2_to_affine(&mut ret_affine, &ret)
     }
     ret_affine.into()
-}
-
-pub(crate) fn random_key(rng: &mut (impl CryptoRng + Rng)) -> Result<bls::SecretKey, Error> {
-    let ikm: [u8; 32] = rng.gen();
-    let sk = SecretKey::key_gen(&ikm, &[]).map_err(|_| Error::InternalError)?;
-    Ok(bls::SecretKey::from_point(sk))
 }

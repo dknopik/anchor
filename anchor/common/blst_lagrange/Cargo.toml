@@ -15,7 +15,7 @@ zeroize = { workspace = true }
 blst = { workspace = true }
 
 [features]
-default = ["blst"]
+default = ["blsful"]
 blsful = ["dep:blstrs_plus", "dep:vsss-rs"]
 blst = ["dep:blst"]
 blst_single_thread = ["blst"]

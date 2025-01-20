@@ -31,6 +31,13 @@ pub fn split(
     split_with_rng(key, threshold, ids, &mut thread_rng())
 }
 
+#[cfg(any(feature = "blst", test))]
+pub(crate) fn random_key(rng: &mut (impl CryptoRng + Rng)) -> Result<SecretKey, Error> {
+    let ikm: [u8; 32] = rng.gen();
+    let sk = ::blst::min_pk::SecretKey::key_gen(&ikm, &[]).map_err(|_| Error::InternalError)?;
+    Ok(SecretKey::from_point(sk))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

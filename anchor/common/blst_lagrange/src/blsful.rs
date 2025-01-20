@@ -1,5 +1,4 @@
 use crate::Error;
-use blstrs_plus::ff::Field;
 use blstrs_plus::{G2Projective, Scalar};
 use rand::{CryptoRng, Rng};
 use std::num::NonZeroU64;
@@ -55,7 +54,6 @@ pub fn split_with_rng(
             .try_into()
             .map_err(|_| Error::InternalError)?,
     );
-    // i dont care about constant time. give me my value. side channel attacks arent real.
     let key = if result.is_some().into() {
         IdentifierPrimeField(result.unwrap())
     } else {
@@ -86,7 +84,7 @@ pub fn split_with_rng(
                     (
                         KeyId {
                             num: u64::from_be_bytes((&bytes[24..]).try_into().unwrap()),
-                            identifier: identifier.clone(),
+                            identifier: *identifier,
                         },
                         sk,
                     )
@@ -114,7 +112,6 @@ pub fn combine_signatures(
                 return Err(Error::InternalError);
             };
             let g2 = G2Projective::from_uncompressed(&bytes);
-            // i dont care about constant time. give me my value. side channel attacks arent real.
             if g2.is_some().into() {
                 Ok((id.identifier, ValueGroup(g2.unwrap())))
             } else {
@@ -125,10 +122,5 @@ pub fn combine_signatures(
 
     let result = share_set.combine().map_err(|_| Error::InternalError)?;
     bls::Signature::deserialize_uncompressed(&result.0.to_uncompressed())
-        .map_err(|_| Error::InternalError)
-}
-
-pub(crate) fn random_key(rng: &mut (impl CryptoRng + Rng)) -> Result<bls::SecretKey, Error> {
-    bls::SecretKey::deserialize(&Scalar::random(rng).to_be_bytes())
         .map_err(|_| Error::InternalError)
 }
