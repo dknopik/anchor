@@ -6744,6 +6744,7 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "processor",
+ "slot_clock",
  "ssv_types",
  "tokio",
  "tracing",
