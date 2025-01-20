@@ -8,6 +8,7 @@ authors = ["Sigma Prime <contact@sigmaprime.io>"]
 blst_lagrange = { workspace = true }
 dashmap = { workspace = true }
 processor = { workspace = true }
+slot_clock = { workspace = true }
 ssv_types = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tracing = { workspace = true }

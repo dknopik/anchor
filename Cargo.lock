@@ -1288,14 +1288,14 @@ dependencies = [
  "arbitrary",
  "blst",
  "ethereum_hashing",
- "ethereum_serde_utils",
- "ethereum_ssz",
+ "ethereum_serde_utils 0.7.0",
+ "ethereum_ssz 0.7.1",
  "fixed_bytes",
  "hex",
  "rand",
  "safe_arith",
  "serde",
- "tree_hash",
+ "tree_hash 0.8.0",
  "zeroize",
 ]
 
@@ -1556,7 +1556,7 @@ dependencies = [
  "clap",
  "dirs 3.0.2",
  "eth2_network_config",
- "ethereum_ssz",
+ "ethereum_ssz 0.7.1",
  "hex",
  "serde",
  "serde_json",
@@ -2466,9 +2466,9 @@ dependencies = [
  "derivative",
  "enr",
  "eth2_keystore",
- "ethereum_serde_utils",
- "ethereum_ssz",
- "ethereum_ssz_derive",
+ "ethereum_serde_utils 0.7.0",
+ "ethereum_ssz 0.7.1",
+ "ethereum_ssz_derive 0.7.1",
  "futures",
  "futures-util",
  "libp2p-identity",
@@ -2482,7 +2482,7 @@ dependencies = [
  "serde",
  "serde_json",
  "slashing_protection",
- "ssz_types",
+ "ssz_types 0.8.0",
  "types",
  "zeroize",
 ]
@@ -2565,6 +2565,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ethbloom"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c22d4b5885b6aa2fe5e8b9329fb8d232bf739e434e6b87347c63bdd00c120f60"
+dependencies = [
+ "crunchy",
+ "fixed-hash",
+ "impl-rlp",
+ "impl-serde",
+ "tiny-keccak",
+]
+
+[[package]]
+name = "ethereum-types"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d215cbf040552efcbe99a38372fe80ab9d00268e20012b79fcd0f073edd8ee"
+dependencies = [
+ "ethbloom",
+ "fixed-hash",
+ "impl-rlp",
+ "impl-serde",
+ "primitive-types",
+ "uint 0.9.5",
+]
+
+[[package]]
 name = "ethereum_hashing"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2589,6 +2616,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ethereum_serde_utils"
+version = "1.0.0-beta.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c927663d966e972b65dba434972dc158b3b07d0d40feadf2ecc095f90dfb79f6"
+dependencies = [
+ "ethereum-types",
+ "hex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+]
+
+[[package]]
 name = "ethereum_ssz"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2600,10 +2640,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "ethereum_ssz"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "862e41ea8eea7508f70cfd8cd560f0c34bb0af37c719a8e06c2672f0f031d8e5"
+dependencies = [
+ "alloy-primitives",
+ "ethereum_serde_utils 0.7.0",
+ "itertools 0.13.0",
+ "serde",
+ "serde_derive",
+ "smallvec",
+ "typenum",
+]
+
+[[package]]
 name = "ethereum_ssz_derive"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3deae99c8e74829a00ba7a92d49055732b3c1f093f2ccfa3cbc621679b6fa91"
+dependencies = [
+ "darling 0.20.10",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.96",
+]
+
+[[package]]
+name = "ethereum_ssz_derive"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d31ecf6640112f61dc34b4d8359c081102969af0edd18381fed2052f6db6a410"
 dependencies = [
  "darling 0.20.10",
  "proc-macro2",
@@ -3789,6 +3856,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "impl-rlp"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f28220f89297a075ddc7245cd538076ee98b01f2a9c23a53a4f1105d5a322808"
+dependencies = [
+ "rlp",
+]
+
+[[package]]
+name = "impl-serde"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebc88fc67028ae3db0c853baa36269d398d5f45b6982f95549ff5def78c935cd"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "impl-trait-for-tuples"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3968,14 +4053,14 @@ dependencies = [
  "c-kzg",
  "derivative",
  "ethereum_hashing",
- "ethereum_serde_utils",
- "ethereum_ssz",
- "ethereum_ssz_derive",
+ "ethereum_serde_utils 0.7.0",
+ "ethereum_ssz 0.7.1",
+ "ethereum_ssz_derive 0.7.1",
  "hex",
  "rust_eth_kzg",
  "serde",
  "serde_json",
- "tree_hash",
+ "tree_hash 0.8.0",
 ]
 
 [[package]]
@@ -4529,8 +4614,8 @@ dependencies = [
  "discv5",
  "either",
  "eth2",
- "ethereum_ssz",
- "ethereum_ssz_derive",
+ "ethereum_ssz 0.7.1",
+ "ethereum_ssz_derive 0.7.1",
  "fnv",
  "futures",
  "gossipsub",
@@ -4551,7 +4636,7 @@ dependencies = [
  "slog",
  "smallvec",
  "snap",
- "ssz_types",
+ "ssz_types 0.8.0",
  "strum 0.24.1",
  "superstruct",
  "task_executor",
@@ -4771,14 +4856,14 @@ dependencies = [
  "arbitrary",
  "derivative",
  "ethereum_hashing",
- "ethereum_ssz",
- "ethereum_ssz_derive",
+ "ethereum_ssz 0.7.1",
+ "ethereum_ssz_derive 0.7.1",
  "itertools 0.13.0",
  "parking_lot",
  "rayon",
  "serde",
  "smallvec",
- "tree_hash",
+ "tree_hash 0.8.0",
  "triomphe",
  "typenum",
  "vec_map",
@@ -4978,10 +5063,15 @@ dependencies = [
  "async-channel",
  "dirs 5.0.1",
  "discv5",
+ "ethereum_serde_utils 1.0.0-beta.0",
+ "ethereum_ssz 0.8.2",
+ "ethereum_ssz_derive 0.8.2",
  "futures",
+ "hex",
  "libp2p",
  "lighthouse_network",
  "serde",
+ "ssz_types 0.10.0",
  "task_executor",
  "tokio",
  "tracing",
@@ -5559,6 +5649,8 @@ checksum = "0b34d9fd68ae0b74a41b21c03c2f62847aa0ffea044eee893b4c140b37e244e2"
 dependencies = [
  "fixed-hash",
  "impl-codec",
+ "impl-rlp",
+ "impl-serde",
  "uint 0.9.5",
 ]
 
@@ -5705,8 +5797,8 @@ name = "proto_array"
 version = "0.2.0"
 source = "git+https://github.com/dknopik/lighthouse?branch=into-anchor#d808cb52e9a0aaf527c31871c85b7634b71d4084"
 dependencies = [
- "ethereum_ssz",
- "ethereum_ssz_derive",
+ "ethereum_ssz 0.7.1",
+ "ethereum_ssz_derive 0.7.1",
  "safe_arith",
  "serde",
  "serde_yaml",
@@ -6789,6 +6881,7 @@ dependencies = [
  "blst_lagrange",
  "dashmap",
  "processor",
+ "slot_clock",
  "ssv_types",
  "tokio",
  "tracing",
@@ -6810,7 +6903,7 @@ version = "0.1.0"
 source = "git+https://github.com/dknopik/lighthouse?branch=into-anchor#d808cb52e9a0aaf527c31871c85b7634b71d4084"
 dependencies = [
  "arbitrary",
- "ethereum_serde_utils",
+ "ethereum_serde_utils 0.7.0",
  "filesystem",
  "r2d2",
  "r2d2_sqlite",
@@ -7008,7 +7101,7 @@ dependencies = [
  "derive_more 1.0.0",
  "openssl",
  "rusqlite",
- "tree_hash",
+ "tree_hash 0.8.0",
  "tree_hash_derive",
  "types",
 ]
@@ -7021,13 +7114,29 @@ checksum = "35e0719d2b86ac738a55ae71a8429f52aa2741da988f1fd0975b4cc610fd1e08"
 dependencies = [
  "arbitrary",
  "derivative",
- "ethereum_serde_utils",
- "ethereum_ssz",
+ "ethereum_serde_utils 0.7.0",
+ "ethereum_ssz 0.7.1",
  "itertools 0.13.0",
  "serde",
  "serde_derive",
  "smallvec",
- "tree_hash",
+ "tree_hash 0.8.0",
+ "typenum",
+]
+
+[[package]]
+name = "ssz_types"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22bc24c8a61256950632fb6b68ea09f6b5c988070924c6292eb5933635202e00"
+dependencies = [
+ "ethereum_serde_utils 0.7.0",
+ "ethereum_ssz 0.8.2",
+ "itertools 0.13.0",
+ "serde",
+ "serde_derive",
+ "smallvec",
+ "tree_hash 0.9.0",
  "typenum",
 ]
 
@@ -7717,6 +7826,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree_hash"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cc60ae4c4236ee721305d0f0b5aa3e8ef5b66f3fa61d17072430bc246d6694a"
+dependencies = [
+ "alloy-primitives",
+ "ethereum_hashing",
+ "ethereum_ssz 0.8.2",
+ "smallvec",
+ "typenum",
+]
+
+[[package]]
 name = "tree_hash_derive"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7784,9 +7906,9 @@ dependencies = [
  "derivative",
  "eth2_interop_keypairs",
  "ethereum_hashing",
- "ethereum_serde_utils",
- "ethereum_ssz",
- "ethereum_ssz_derive",
+ "ethereum_serde_utils 0.7.0",
+ "ethereum_ssz 0.7.1",
+ "ethereum_ssz_derive 0.7.1",
  "fixed_bytes",
  "hex",
  "int_to_bytes",
@@ -7810,12 +7932,12 @@ dependencies = [
  "serde_yaml",
  "slog",
  "smallvec",
- "ssz_types",
+ "ssz_types 0.8.0",
  "superstruct",
  "swap_or_not_shuffle",
  "tempfile",
  "test_random_derive",
- "tree_hash",
+ "tree_hash 0.8.0",
  "tree_hash_derive",
 ]
 
@@ -8012,7 +8134,7 @@ dependencies = [
  "task_executor",
  "tokio",
  "tracing",
- "tree_hash",
+ "tree_hash 0.8.0",
  "types",
  "validator_metrics",
  "validator_store",
