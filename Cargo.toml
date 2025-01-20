@@ -3,7 +3,7 @@
 members = [
     "anchor",
     "anchor/client",
-    "anchor/common/blst_lagrange",
+    "anchor/common/bls_lagrange",
     "anchor/common/qbft",
     "anchor/common/ssv_types",
     "anchor/common/version",
@@ -25,7 +25,7 @@ edition = "2021"
 # This table has three subsections: first the internal dependencies, then the lighthouse dependencies, then all other.
 [workspace.dependencies]
 anchor_validator_store = { path = "anchor/validator_store" }
-blst_lagrange = { path = "anchor/common/blst_lagrange" }
+bls_lagrange = { path = "anchor/common/bls_lagrange" }
 client = { path = "anchor/client" }
 database = { path = "anchor/database" }
 eth = { path = "anchor/eth" }

@@ -1,4 +1,4 @@
-use blst_lagrange::KeyId;
+use bls_lagrange::KeyId;
 use dashmap::DashMap;
 use processor::{DropOnFinish, Senders, WorkItem};
 use slot_clock::SlotClock;
@@ -179,7 +179,7 @@ pub enum CollectionError {
     QueueFullError,
     CollectionTimeout,
     EmptySignature,
-    RecoverError(blst_lagrange::Error),
+    RecoverError(bls_lagrange::Error),
 }
 
 impl From<TrySendError<WorkItem>> for CollectionError {
@@ -197,8 +197,8 @@ impl From<RecvError> for CollectionError {
     }
 }
 
-impl From<blst_lagrange::Error> for CollectionError {
-    fn from(err: blst_lagrange::Error) -> Self {
+impl From<bls_lagrange::Error> for CollectionError {
+    fn from(err: bls_lagrange::Error) -> Self {
         CollectionError::RecoverError(err)
     }
 }
@@ -247,7 +247,7 @@ async fn signature_collector(
                 if signature_share.len() as u64 >= request.threshold {
                     // TODO move to blocking threadpool?
 
-                    let signature = match recover_signature(mem::take(&mut signature_share)) {
+                    let signature = match combine_signatures(mem::take(&mut signature_share)) {
                         Ok(signature) => Arc::new(signature),
                         Err(err) => {
                             error!(?err, "Failed to recover signature");
@@ -265,7 +265,9 @@ async fn signature_collector(
     }
 }
 
-fn recover_signature(shares: HashMap<OperatorId, Signature>) -> Result<Signature, CollectionError> {
+fn combine_signatures(
+    shares: HashMap<OperatorId, Signature>,
+) -> Result<Signature, CollectionError> {
     let (ids, signatures): (Vec<_>, Vec<_>) = shares
         .into_iter()
         .map(|(k, s)| KeyId::try_from(*k).map(|k| (k, s)))
@@ -273,5 +275,5 @@ fn recover_signature(shares: HashMap<OperatorId, Signature>) -> Result<Signature
         .into_iter()
         .unzip();
 
-    Ok(blst_lagrange::combine_signatures(&signatures, &ids)?)
+    Ok(bls_lagrange::combine_signatures(&signatures, &ids)?)
 }
