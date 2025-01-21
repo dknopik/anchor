@@ -12,7 +12,7 @@ use tracing::warn;
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 pub const DEFAULT_EXECUTION_NODE: &str = "http://localhost:8545/";
-pub const DEFAULT_EXECUTION_NODE_WS: &str = "wss://localhost:8545/";
+pub const DEFAULT_EXECUTION_NODE_WS: &str = "ws://localhost:8545/";
 /// The default Data directory, relative to the users home directory
 pub const DEFAULT_ROOT_DIR: &str = ".anchor";
 /// Default network, used to partition the data storage

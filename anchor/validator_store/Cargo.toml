@@ -11,6 +11,7 @@ dashmap = { workspace = true }
 database = { workspace = true }
 eth2 = { workspace = true }
 futures = { workspace = true }
+hex = { workspace = true }
 openssl = { workspace = true }
 parking_lot = { workspace = true }
 qbft = { workspace = true }

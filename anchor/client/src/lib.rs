@@ -31,7 +31,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use task_executor::TaskExecutor;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
+use tokio::select;
+use tokio::sync::oneshot::Receiver;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 use types::{ChainSpec, EthSpec, Hash256};
@@ -299,6 +301,7 @@ impl Client {
         wait_for_genesis(&beacon_nodes, genesis_time).await?;
 
         // Start syncer
+        let (historic_finished_tx, historic_finished_rx) = oneshot::channel();
         let mut syncer = eth::SsvEventSyncer::new(
             database.clone(),
             // TODO this is very hacky, but `eth::Config` has a TODO anyways
@@ -321,6 +324,7 @@ impl Client {
                     Some("holesky") => eth::Network::Holesky,
                     _ => return Err(format!("Unsupported network {:?}", spec.config_name)),
                 },
+                historic_finished_notify: Some(historic_finished_tx),
             },
         )
         .await
@@ -335,9 +339,9 @@ impl Client {
             "syncer",
         );
 
-        // Wait until we have an operator id
-        let operator_id = wait_for_operator_id(&database, &spec).await;
-        info!(id = *operator_id, "Operator enabled");
+        // Wait until we have an operator id and historical sync is done
+        let operator_id =
+            wait_for_operator_id_and_sync(&database, historic_finished_rx, &spec).await;
 
         // Create the signature collector
         let signature_collector =
@@ -622,16 +626,25 @@ async fn poll_whilst_waiting_for_genesis(
     }
 }
 
-async fn wait_for_operator_id(
+async fn wait_for_operator_id_and_sync(
     database: &Arc<NetworkDatabase>,
+    mut sync_notification: Receiver<()>,
     spec: &Arc<ChainSpec>,
 ) -> OperatorId {
-    loop {
+    let sleep_duration = Duration::from_secs(spec.seconds_per_slot);
+    let id = loop {
         if let Some(id) = database.get_own_id() {
-            return id;
+            break id;
         }
         info!("Waiting for operator id");
-        sleep(Duration::from_secs(spec.seconds_per_slot)).await;
+        sleep(sleep_duration).await;
+    };
+    info!(id = *id, "Operator found on chain");
+    loop {
+        select! {
+            _ = &mut sync_notification => return id,
+            _ = sleep(sleep_duration) => info!("Waiting for historical sync to finish"),
+        }
     }
 }
 

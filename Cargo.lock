@@ -661,6 +661,7 @@ dependencies = [
  "database",
  "eth2",
  "futures",
+ "hex",
  "openssl",
  "parking_lot",
  "qbft",

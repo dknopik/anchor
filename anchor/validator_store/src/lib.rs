@@ -23,6 +23,7 @@ use ssv_types::message::{
 use ssv_types::{Cluster, OperatorId, ValidatorIndex, ValidatorMetadata};
 use std::collections::HashSet;
 use std::fmt::Debug;
+use std::str::from_utf8;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -113,7 +114,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
     fn maybe_load_validators(&self) {
         let mut last = self.last_validator_update.lock();
         if let Some(now) = self.slot_clock.now() {
-            if now >= *last {
+            if now > *last {
                 *last = now;
                 drop(last);
                 self.load_validators();
@@ -144,48 +145,62 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
             let pubkey_bytes = validator.public_key.compress();
             // value was not present: add to store
             if !unseen_validators.remove(&pubkey_bytes) {
-                let Some(share) = self.database.shares().get_by(&validator.public_key) else {
-                    warn!(validator = %pubkey_bytes, "Key share not found");
-                    continue;
-                };
-
-                let mut secret_key = [0; 32];
-                match self.private_key.private_decrypt(
-                    &share.encrypted_private_key,
-                    &mut secret_key,
-                    Padding::PKCS1,
-                ) {
-                    Ok(32) => {} // bellissimo
-                    Ok(bytes) => {
-                        error!(
-                            bytes,
-                            validator = %pubkey_bytes,
-                            "Share decryption yielded not 32 bytes"
-                        );
-                        continue;
+                if let Ok(secret_key) = self.get_share_from_db(&validator, pubkey_bytes) {
+                    let result = self.add_validator(pubkey_bytes, cluster, validator, secret_key);
+                    if let Err(err) = result {
+                        error!(?err, "Unable to initialize validator");
                     }
-                    Err(e) => {
-                        error!(?e, validator = %pubkey_bytes, "Share decryption failed");
-                        continue;
-                    }
-                }
-                let secret_key = match SecretKey::deserialize(&secret_key) {
-                    Ok(secret_key) => secret_key,
-                    Err(e) => {
-                        error!(?e, validator = %pubkey_bytes, "Invalid secret key decrypted");
-                        continue;
-                    }
-                };
-
-                if let Err(err) = self.add_validator(pubkey_bytes, cluster, validator, secret_key) {
-                    error!(?err, "Unable to initialize validator");
                 }
             }
         }
 
         for validator in unseen_validators {
             self.validators.remove(&validator);
+            info!(%validator, "Validator disabled");
         }
+    }
+
+    fn get_share_from_db(
+        &self,
+        validator: &ValidatorMetadata,
+        pubkey_bytes: PublicKeyBytes,
+    ) -> Result<SecretKey, ()> {
+        let share = self
+            .database
+            .shares()
+            .get_by(&validator.public_key)
+            .ok_or_else(|| warn!(validator = %pubkey_bytes, "Key share not found"))?;
+
+        // the buffer size must be larger than or equal the modulus size
+        let mut key_hex = [0; 2048 / 8];
+        let length = self
+            .private_key
+            .private_decrypt(&share.encrypted_private_key, &mut key_hex, Padding::PKCS1)
+            .map_err(|e| error!(?e, validator = %pubkey_bytes, "Share decryption failed"))?;
+
+        let key_hex = from_utf8(&key_hex[..length]).map_err(|err| {
+            error!(
+                ?err,
+                validator = %pubkey_bytes,
+                "Share decryption yielded non-utf8 data"
+            )
+        })?;
+
+        let mut secret_key = [0; 32];
+        hex::decode_to_slice(
+            key_hex.strip_prefix("0x").unwrap_or(key_hex),
+            &mut secret_key,
+        )
+        .map_err(|err| {
+            error!(
+                ?err,
+                validator = %pubkey_bytes,
+                "Decrypted share is not a hex string of size 64"
+            )
+        })?;
+
+        SecretKey::deserialize(&secret_key)
+            .map_err(|err| error!(?err, validator = %pubkey_bytes, "Invalid secret key decrypted"))
     }
 
     fn add_validator(
@@ -205,7 +220,9 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
         );
         self.slashing_protection
             .register_validator(pubkey_bytes)
-            .map_err(Error::Slashable)
+            .map_err(Error::Slashable)?;
+        info!(validator = %pubkey_bytes, "Validator enabled");
+        Ok(())
     }
 
     fn validator(&self, validator_pubkey: PublicKeyBytes) -> Result<InitializedValidator, Error> {
