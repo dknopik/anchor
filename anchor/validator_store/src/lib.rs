@@ -209,7 +209,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
                         BeaconBlock::Bellatrix(_) => DATA_VERSION_BELLATRIX,
                         BeaconBlock::Capella(_) => DATA_VERSION_CAPELLA,
                         BeaconBlock::Deneb(_) => DATA_VERSION_DENEB,
-                        BeaconBlock::Electra(_) => DATA_VERSION_UNKNOWN,
+                        _ => DATA_VERSION_UNKNOWN,
                     },
                     data_ssz: Box::new(wrapper(block)),
                 },
