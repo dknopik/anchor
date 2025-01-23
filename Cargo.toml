@@ -73,6 +73,7 @@ async-channel = "1.9"
 axum = "0.7.7"
 base64 = "0.22.1"
 blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
+# the custom repo is needed because they fix to a specific version of blst, which conflicts with the line above
 blstrs_plus = { git = "https://github.com/dknopik/blstrs", branch = "pls" }
 clap = { version = "4.5.15", features = ["derive", "wrap_help"] }
 dashmap = "6.1.0"
@@ -108,9 +109,8 @@ vsss-rs = "5.1.0"
 zeroize = "1.8.1"
 
 [patch.crates-io]
+# todo: remove when https://github.com/supranational/blst/pull/248 is merged
 blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
-# this is needed because the official release uses a precise version of blst, which conflicts with above line
-blstrs_plus = { git = "https://github.com/dknopik/blstrs", branch = "pls" }
 
 [profile.maxperf]
 inherits = "release"
