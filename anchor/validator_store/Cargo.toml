@@ -8,8 +8,11 @@ rust-version = "1.81.0"
 [dependencies]
 beacon_node_fallback = { workspace = true }
 dashmap = { workspace = true }
+database = { workspace = true }
 eth2 = { workspace = true }
-futures = "0.3.31"
+futures = { workspace = true }
+hex = { workspace = true }
+openssl = { workspace = true }
 parking_lot = { workspace = true }
 qbft = { workspace = true }
 qbft_manager = { workspace = true }
