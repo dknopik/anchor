@@ -1,7 +1,7 @@
 pub mod sync_committee_service;
 
 use dashmap::DashMap;
-use database::{NetworkDatabase, NonUniqueIndex, UniqueIndex};
+use database::{NetworkState, NonUniqueIndex, UniqueIndex};
 use futures::future::join_all;
 use openssl::pkey::Private;
 use openssl::rsa::{Padding, Rsa};
@@ -26,6 +26,8 @@ use std::fmt::Debug;
 use std::str::from_utf8;
 use std::sync::Arc;
 use std::time::Duration;
+use task_executor::TaskExecutor;
+use tokio::sync::watch::Receiver;
 use tracing::{error, info, warn};
 use types::attestation::Attestation;
 use types::beacon_block::BeaconBlock;
@@ -69,12 +71,10 @@ struct InitializedValidator {
 
 pub struct AnchorValidatorStore<T: SlotClock + 'static, E: EthSpec> {
     validators: DashMap<PublicKeyBytes, InitializedValidator>,
-    database: Arc<NetworkDatabase>,
     signature_collector: Arc<SignatureCollectorManager<T>>,
     qbft_manager: Arc<QbftManager<T, E>>,
     slashing_protection: SlashingDatabase,
     slashing_protection_last_prune: Mutex<Epoch>,
-    last_validator_update: Mutex<Slot>,
     slot_clock: T,
     spec: Arc<ChainSpec>,
     genesis_validators_root: Hash256,
@@ -85,7 +85,7 @@ pub struct AnchorValidatorStore<T: SlotClock + 'static, E: EthSpec> {
 impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        database: Arc<NetworkDatabase>,
+        database_state: Receiver<NetworkState>,
         signature_collector: Arc<SignatureCollectorManager<T>>,
         qbft_manager: Arc<QbftManager<T, E>>,
         slashing_protection: SlashingDatabase,
@@ -94,47 +94,48 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
         genesis_validators_root: Hash256,
         operator_id: OperatorId,
         private_key: Rsa<Private>,
-    ) -> AnchorValidatorStore<T, E> {
-        Self {
+        task_executor: TaskExecutor,
+    ) -> Arc<AnchorValidatorStore<T, E>> {
+        let ret = Arc::new(Self {
             validators: DashMap::new(),
-            database,
             signature_collector,
             qbft_manager,
             slashing_protection,
             slashing_protection_last_prune: Mutex::new(Epoch::new(0)),
-            last_validator_update: Mutex::new(Slot::new(0)),
             slot_clock,
             spec,
             genesis_validators_root,
             operator_id,
             private_key,
+        });
+
+        task_executor.spawn(
+            Arc::clone(&ret).updater(database_state),
+            "validator_store_updater",
+        );
+
+        ret
+    }
+
+    async fn updater(self: Arc<Self>, mut database_state: Receiver<NetworkState>) {
+        while database_state.changed().await.is_ok() {
+            self.load_validators(&database_state.borrow());
         }
     }
 
-    fn maybe_load_validators(&self) {
-        let mut last = self.last_validator_update.lock();
-        if let Some(now) = self.slot_clock.now() {
-            if now > *last {
-                *last = now;
-                drop(last);
-                self.load_validators();
-            }
-        }
-    }
-
-    fn load_validators(&self) {
+    fn load_validators(&self, state: &NetworkState) {
         let mut unseen_validators = self
             .validators
             .iter()
             .map(|v| *v.key())
             .collect::<HashSet<_>>();
-        let db_clusters = self.database.get_own_clusters().iter().collect::<Vec<_>>();
+        let db_clusters = state.get_own_clusters().iter().collect::<Vec<_>>();
 
         for (cluster, validator) in db_clusters
             .into_iter()
-            .filter_map(|id| self.database.clusters().get_by(id.key()).map(Arc::new))
+            .filter_map(|id| state.clusters().get_by(id).map(Arc::new))
             .flat_map(|cluster| {
-                self.database
+                state
                     .metadata()
                     .get_all_by(&cluster.cluster_id)
                     .unwrap_or_default()
@@ -145,7 +146,7 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
             let pubkey_bytes = validator.public_key.compress();
             // value was not present: add to store
             if !unseen_validators.remove(&pubkey_bytes) {
-                if let Ok(secret_key) = self.get_share_from_db(&validator, pubkey_bytes) {
+                if let Ok(secret_key) = self.get_share_from_state(state, &validator, pubkey_bytes) {
                     let result = self.add_validator(pubkey_bytes, cluster, validator, secret_key);
                     if let Err(err) = result {
                         error!(?err, "Unable to initialize validator");
@@ -160,13 +161,13 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
         }
     }
 
-    fn get_share_from_db(
+    fn get_share_from_state(
         &self,
+        state: &NetworkState,
         validator: &ValidatorMetadata,
         pubkey_bytes: PublicKeyBytes,
     ) -> Result<SecretKey, ()> {
-        let share = self
-            .database
+        let share = state
             .shares()
             .get_by(&validator.public_key)
             .ok_or_else(|| warn!(validator = %pubkey_bytes, "Key share not found"))?;
@@ -226,7 +227,6 @@ impl<T: SlotClock, E: EthSpec> AnchorValidatorStore<T, E> {
     }
 
     fn validator(&self, validator_pubkey: PublicKeyBytes) -> Result<InitializedValidator, Error> {
-        self.maybe_load_validators();
         self.validators
             .get(&validator_pubkey)
             .map(|c| c.value().clone())
@@ -591,7 +591,6 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         I: FromIterator<PublicKeyBytes>,
         F: Fn(DoppelgangerStatus) -> Option<PublicKeyBytes>,
     {
-        self.maybe_load_validators();
         // we don't care about doppelgangers
         self.validators.iter().map(|v| *v.key()).collect()
     }
@@ -602,7 +601,6 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
     }
 
     fn num_voting_validators(&self) -> usize {
-        self.maybe_load_validators();
         self.validators.len()
     }
 
@@ -638,7 +636,6 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
     }
 
     fn set_validator_index(&self, validator_pubkey: &PublicKeyBytes, index: u64) {
-        self.maybe_load_validators();
         match self.validators.get_mut(validator_pubkey) {
             None => warn!(
                 validator = validator_pubkey.as_hex_string(),
