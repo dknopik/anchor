@@ -10,24 +10,25 @@ impl NetworkDatabase {
         owner: Address,
         fee_recipient: Address,
     ) -> Result<(), DatabaseError> {
-        // Update the database
-        let conn = self.connection()?;
-        conn.prepare_cached(SQL[&SqlStatement::UpdateFeeRecipient])?
-            .execute(params![
-                fee_recipient.to_string(), // New fee recipient address for entire cluster
-                owner.to_string()          // Owner of the cluster
-            ])?;
+        // Make sure the cluster exists by getting the in memory entry
+        if let Some(mut cluster) = self.state().clusters().get_by(&owner) {
+            // Update the database
+            let conn = self.connection()?;
+            conn.prepare_cached(SQL[&SqlStatement::UpdateFeeRecipient])?
+                .execute(params![
+                    fee_recipient.to_string(), // New fee recipient address for entire cluster
+                    owner.to_string()          // Owner of the cluster
+                ])?;
 
-        self.modify_state(|state| {
-            if let Some(mut cluster) = state.multi_state.clusters.get_by(&owner) {
-                // Update in memory
-                cluster.fee_recipient = fee_recipient;
+            // Update in memory
+            cluster.fee_recipient = fee_recipient;
+            self.modify_state(|state| {
                 state
                     .multi_state
                     .clusters
                     .update(&cluster.cluster_id.clone(), cluster);
-            }
-        });
+            });
+        }
         Ok(())
     }
 
@@ -37,28 +38,25 @@ impl NetworkDatabase {
         validator_pubkey: &PublicKey,
         graffiti: Graffiti,
     ) -> Result<(), DatabaseError> {
-        // Update the database
-        let conn = self.connection()?;
-        conn.prepare_cached(SQL[&SqlStatement::SetGraffiti])?
-            .execute(params![
-                graffiti.0.as_slice(),        // New graffiti
-                validator_pubkey.to_string()  // The public key of the validator
-            ])?;
+        // Make sure this validator exists by getting the in memory entry
+        if let Some(mut validator) = self.state().metadata().get_by(validator_pubkey) {
+            // Update the database
+            let conn = self.connection()?;
+            conn.prepare_cached(SQL[&SqlStatement::SetGraffiti])?
+                .execute(params![
+                    graffiti.0.as_slice(),        // New graffiti
+                    validator_pubkey.to_string()  // The public key of the validator
+                ])?;
 
-        self.modify_state(|state| {
-            if let Some(mut validator) = state
-                .multi_state
-                .validator_metadata
-                .get_by(validator_pubkey)
-            {
-                // Update in memory
-                validator.graffiti = graffiti;
+            // Update in memory
+            validator.graffiti = graffiti;
+            self.modify_state(|state| {
                 state
                     .multi_state
                     .validator_metadata
                     .update(validator_pubkey, validator);
-            }
-        });
+            });
+        }
         Ok(())
     }
 }

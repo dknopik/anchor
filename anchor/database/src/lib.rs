@@ -81,7 +81,6 @@ struct SingleState {
 pub struct NetworkState {
     multi_state: MultiState,
     single_state: SingleState,
-    modified: bool,
 }
 
 /// Top level NetworkDatabase that contains in memory storage for quick access
@@ -117,22 +116,13 @@ impl NetworkDatabase {
     }
 
     /// Update the last processed block number in the database
-    /// We trigger a notification to all watchers iff the state was modified since
-    /// the last call to this function.
+    /// Also, trigger a notification for other code to act on the new state
     pub fn processed_block(&self, block_number: u64) -> Result<(), DatabaseError> {
         let conn = self.connection()?;
         conn.prepare_cached(SQL[&SqlStatement::UpdateBlockNumber])?
             .execute(params![block_number])?;
-        self.state.send_if_modified(|state| {
-            if state.single_state.last_processed_block != block_number {
-                state.single_state.last_processed_block = block_number;
-                if state.modified {
-                    state.modified = false;
-                    return true;
-                }
-            }
-            false
-        });
+        self.state
+            .send_modify(|state| state.single_state.last_processed_block = block_number);
         Ok(())
     }
 
@@ -178,13 +168,11 @@ impl NetworkDatabase {
         Ok(self.conn_pool.get()?)
     }
 
-    /// Apply a modification to the state, and mark the state as modified
-    /// As soon as the end of block processing is signaled via [`processed_block`],
-    /// the notification to all watchers is triggered (instead of here)
+    /// for convenience: Apply a modification to the state without triggering a notification
+    /// This will be done at the end of a block via `processed_block` to avoid spamming
     fn modify_state(&self, f: impl FnOnce(&mut NetworkState)) {
         self.state.send_if_modified(|state| {
             f(state);
-            state.modified = true;
             false
         });
     }

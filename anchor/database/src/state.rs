@@ -107,7 +107,6 @@ impl NetworkState {
                 clusters: cluster_multi,
             },
             single_state,
-            modified: false,
         })
     }
 
