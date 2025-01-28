@@ -14,6 +14,7 @@ members = [
     "anchor/processor",
     "anchor/qbft_manager",
     "anchor/signature_collector",
+    "anchor/subnet_tracker",
     "anchor/validator_store",
 ]
 resolver = "2"
@@ -34,6 +35,7 @@ processor = { path = "anchor/processor" }
 qbft = { path = "anchor/common/qbft" }
 qbft_manager = { path = "anchor/qbft_manager" }
 signature_collector = { path = "anchor/signature_collector" }
+subnet_tracker = { path = "anchor/subnet_tracker" }
 ssv_types = { path = "anchor/common/ssv_types" }
 version = { path = "anchor/common/version" }
 
