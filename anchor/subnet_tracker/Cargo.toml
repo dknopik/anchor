@@ -8,9 +8,9 @@ authors = ["Sigma Prime <contact@sigmaprime.io>"]
 alloy = { workspace = true }
 database = { workspace = true }
 ethereum_serde_utils = "0.7.0"
+log = "0.4.25"
 serde = { workspace = true }
 ssv_types = { workspace = true }
 task_executor = { workspace = true }
-tracing = { workspace = true }
 tokio = { workspace = true }
-log = "0.4.25"
+tracing = { workspace = true }
