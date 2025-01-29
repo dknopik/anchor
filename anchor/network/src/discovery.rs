@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::convert::Infallible;
 use std::future::Future;
 use std::net::Ipv4Addr;
 use std::pin::Pin;
@@ -16,13 +17,11 @@ use futures::{StreamExt, TryFutureExt};
 use libp2p::bytes::Bytes;
 use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
-use libp2p::swarm::dummy::ConnectionHandler;
 use libp2p::swarm::{
-    ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,
+    dummy, ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,
     THandlerOutEvent, ToSwarm,
 };
 use lighthouse_network::discovery::enr_ext::{QUIC6_ENR_KEY, QUIC_ENR_KEY};
-use lighthouse_network::discovery::DiscoveredPeers;
 use lighthouse_network::CombinedKeyExt;
 use tokio::sync::mpsc;
 use tracing::{debug, error, warn};
@@ -99,6 +98,9 @@ pub struct Discovery {
 
     /// The discv5 event stream.
     event_stream: EventStream,
+
+    /// Events that we can send if polled
+    events_to_send: VecDeque<ToSwarm<<Self as NetworkBehaviour>::ToSwarm, THandlerInEvent<Self>>>,
 
     /// Indicates if the discovery service has been started. When the service is disabled, this is
     /// always false.
@@ -226,6 +228,7 @@ impl Discovery {
             active_queries: FuturesUnordered::new(),
             discv5,
             event_stream,
+            events_to_send: VecDeque::new(),
             started: !network_config.disable_discovery,
             // update_ports,
             // log,
@@ -383,9 +386,8 @@ impl Discovery {
 }
 
 impl NetworkBehaviour for Discovery {
-    // Discovery is not a real NetworkBehaviour...
-    type ConnectionHandler = ConnectionHandler;
-    type ToSwarm = DiscoveredPeers;
+    type ConnectionHandler = dummy::ConnectionHandler;
+    type ToSwarm = Infallible;
 
     fn handle_established_inbound_connection(
         &mut self,
@@ -394,7 +396,7 @@ impl NetworkBehaviour for Discovery {
         _local_addr: &Multiaddr,
         _remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        Ok(ConnectionHandler)
+        Ok(dummy::ConnectionHandler)
     }
 
     fn handle_established_outbound_connection(
@@ -405,7 +407,7 @@ impl NetworkBehaviour for Discovery {
         _role_override: Endpoint,
         _port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        Ok(ConnectionHandler)
+        Ok(dummy::ConnectionHandler)
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm) {
@@ -435,13 +437,28 @@ impl NetworkBehaviour for Discovery {
             return Poll::Pending;
         }
 
+        if let Some(event) = self.events_to_send.pop_front() {
+            return Poll::Ready(event);
+        }
+
         // Process the query queue
         //self.process_queue();
 
         // Drive the queries and return any results from completed queries
         if let Some(peers) = self.poll_queries(cx) {
-            // return the result to the peer manager
-            return Poll::Ready(ToSwarm::GenerateEvent(DiscoveredPeers { peers }));
+            debug!(peers =  ?peers, "Peers discovered");
+            let mut events = peers.keys().flat_map(|enr| {
+                let peer_id = enr.peer_id();
+                enr.multiaddr()
+                    .into_iter()
+                    .map(move |address| ToSwarm::NewExternalAddrOfPeer { peer_id, address })
+            });
+            let first = events.next();
+            self.events_to_send.extend(events);
+            if let Some(first) = first {
+                // return the result to the peer manager
+                return Poll::Ready(first);
+            }
         }
         Poll::Pending
     }

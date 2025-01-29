@@ -3,17 +3,21 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use futures::StreamExt;
+use libp2p::connection_limits::ConnectionLimits;
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::Boxed;
 use libp2p::gossipsub::{IdentTopic, MessageAuthenticity, ValidationMode};
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
+use libp2p::peer_store::memory_store;
+use libp2p::peer_store::memory_store::MemoryStore;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{futures, gossipsub, identify, ping, PeerId, Swarm, SwarmBuilder};
-use lighthouse_network::discovery::DiscoveredPeers;
+use libp2p::{
+    connection_limits, futures, gossipsub, identify, peer_store, ping, PeerId, Swarm, SwarmBuilder,
+};
 use lighthouse_network::discv5::enr::k256::sha2::{Digest, Sha256};
 use task_executor::TaskExecutor;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::behaviour::AnchorBehaviour;
 use crate::behaviour::AnchorBehaviourEvent;
@@ -23,10 +27,24 @@ use crate::transport::build_transport;
 use crate::Config;
 
 use crate::types::ssv_message::SignedSSVMessage;
-use lighthouse_network::EnrExt;
 use ssz::Decode;
 use subnet_tracker::{SubnetEvent, SubnetId};
 use tokio::sync::mpsc;
+
+/// A fraction of `PeerManager::target_peers` that we allow to connect to us in excess of
+/// `PeerManager::target_peers`. For clarity, if `PeerManager::target_peers` is 50 and
+/// PEER_EXCESS_FACTOR = 0.1 we allow 10% more nodes, i.e 55.
+const PEER_EXCESS_FACTOR: f32 = 0.1;
+/// A fraction of `PeerManager::target_peers` that we want to be outbound-only connections.
+const TARGET_OUTBOUND_ONLY_FACTOR: f32 = 0.3;
+/// A fraction of `PeerManager::target_peers` that if we get below, we start a discovery query to
+/// reach our target. MIN_OUTBOUND_ONLY_FACTOR must be < TARGET_OUTBOUND_ONLY_FACTOR.
+const MIN_OUTBOUND_ONLY_FACTOR: f32 = 0.2;
+/// The fraction of extra peers beyond the PEER_EXCESS_FACTOR that we allow us to dial for when
+/// requiring subnet peers. More specifically, if our target peer limit is 50, and our excess peer
+/// limit is 55, and we are at 55 peers, the following parameter provisions a few more slots of
+/// dialing priority peers we need for validator duties.
+const PRIORITY_PEER_EXCESS: f32 = 0.2;
 
 pub struct Network {
     swarm: Swarm<AnchorBehaviour>,
@@ -137,22 +155,6 @@ impl Network {
                                 }
                                 // TODO handle gossipsub events
                             },
-                            // Inform the peer manager about discovered peers.
-                            //
-                            // The peer manager will subsequently decide which peers need to be dialed and then dial
-                            // them.
-                            AnchorBehaviourEvent::Discovery(DiscoveredPeers { peers }) => {
-                                //self.peer_manager_mut().peers_discovered(peers);
-                                debug!(peers =  ?peers, "Peers discovered");
-                                for (enr, _) in peers {
-                                    for tcp in enr.multiaddr_tcp() {
-                                        trace!(address = ?tcp, "Dialing peer");
-                                        if let Err(e) = self.swarm.dial(tcp.clone()) {
-                                            error!(address = ?tcp, error = ?e, "Error dialing peer");
-                                        }
-                                    }
-                                }
-                            }
                             // TODO handle other behaviour events
                             _ => {
                                 debug!(event = ?behaviour_event, "Unhandled behaviour event");
@@ -266,11 +268,40 @@ async fn build_anchor_behaviour(
         discovery
     };
 
+    let peer_store = peer_store::Behaviour::new(MemoryStore::new(memory_store::Config {
+        strict_mode: true, // not sure if necessary
+        ..Default::default()
+    }));
+
+    let connection_limits = {
+        let limits = ConnectionLimits::default()
+            .with_max_pending_incoming(Some(5))
+            .with_max_pending_outgoing(Some(16))
+            .with_max_established_incoming(Some(
+                (network_config.target_peers as f32
+                    * (1.0 + PEER_EXCESS_FACTOR - MIN_OUTBOUND_ONLY_FACTOR))
+                    .ceil() as u32,
+            ))
+            .with_max_established_outgoing(Some(
+                (network_config.target_peers as f32 * (1.0 + PEER_EXCESS_FACTOR)).ceil() as u32,
+            ))
+            .with_max_established(Some(
+                (network_config.target_peers as f32
+                    * (1.0 + PEER_EXCESS_FACTOR + PRIORITY_PEER_EXCESS))
+                    .ceil() as u32,
+            ))
+            .with_max_established_per_peer(Some(1));
+
+        connection_limits::Behaviour::new(limits)
+    };
+
     AnchorBehaviour {
         identify,
         ping: ping::Behaviour::default(),
         gossipsub,
         discovery,
+        peer_store,
+        connection_limits,
     }
 }
 
@@ -288,28 +319,6 @@ fn build_swarm(
             self.0.spawn(f, "libp2p");
         }
     }
-
-    // TODO: revisit once peer manager is integrated
-    // let connection_limits = {
-    //     let limits = libp2p::connection_limits::ConnectionLimits::default()
-    //         .with_max_pending_incoming(Some(5))
-    //         .with_max_pending_outgoing(Some(16))
-    //         .with_max_established_incoming(Some(
-    //             (config.target_peers as f32
-    //                 * (1.0 + PEER_EXCESS_FACTOR - MIN_OUTBOUND_ONLY_FACTOR))
-    //                 .ceil() as u32,
-    //         ))
-    //         .with_max_established_outgoing(Some(
-    //             (config.target_peers as f32 * (1.0 + PEER_EXCESS_FACTOR)).ceil() as u32,
-    //         ))
-    //         .with_max_established(Some(
-    //             (config.target_peers as f32 * (1.0 + PEER_EXCESS_FACTOR + PRIORITY_PEER_EXCESS))
-    //                 .ceil() as u32,
-    //         ))
-    //         .with_max_established_per_peer(Some(1));
-    //
-    //     libp2p::connection_limits::Behaviour::new(limits)
-    // };
 
     let swarm_config = libp2p::swarm::Config::with_executor(Executor(executor))
         .with_notify_handler_buffer_size(NonZeroUsize::new(7).expect("Not zero"))
