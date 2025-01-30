@@ -13,6 +13,9 @@ fn main() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
 
+    // Construct the logging, task executor and exit signals
+    let mut environment = Environment::default();
+
     // Obtain the CLI and build the config
     let anchor_config: Anchor = Anchor::parse();
 
@@ -27,8 +30,6 @@ fn main() {
         }
     };
 
-    // Construct the task executor and exit signals
-    let mut environment = Environment::default();
     // Build the core task executor
     let core_executor = environment.executor();
 

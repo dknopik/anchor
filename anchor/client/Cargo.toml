@@ -11,6 +11,7 @@ path = "src/lib.rs"
 [dependencies]
 anchor_validator_store = { workspace = true }
 beacon_node_fallback = { workspace = true }
+bootnodes = { workspace = true }
 clap = { workspace = true }
 database = { workspace = true }
 dirs = { workspace = true }

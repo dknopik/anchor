@@ -8,7 +8,7 @@ use sensitive_url::SensitiveUrl;
 use std::fs;
 use std::net::IpAddr;
 use std::path::PathBuf;
-use tracing::warn;
+use tracing::{error, warn};
 
 pub const DEFAULT_BEACON_NODE: &str = "http://localhost:5052/";
 pub const DEFAULT_EXECUTION_NODE: &str = "http://localhost:8545/";
@@ -101,13 +101,24 @@ impl Config {
 /// Returns a `Default` implementation of `Self` with some parameters modified by the supplied
 /// `cli_args`.
 pub fn from_cli(cli_args: &Anchor) -> Result<Config, String> {
-    let eth2_network = if let Some(_testnet_dir) = &cli_args.testnet_dir {
-        // todo
-        return Err("testnet dir not yet supported".into());
+    let eth2_network = if let Some(testnet_dir) = &cli_args.testnet_dir {
+        let mut eth2_network = Eth2NetworkConfig::load(testnet_dir.clone())?;
+        let result = bootnodes::get_from_testnet_dir(testnet_dir.clone());
+        // only warn if no bootnodes passed via CLI
+        if let Err(err) = &result {
+            if cli_args.boot_nodes_enr.is_empty() {
+                warn!(err, "No bootnodes found in testnet dir or CLI args");
+            }
+        }
+        eth2_network.boot_enr = result.ok();
+        eth2_network
     } else {
-        Eth2NetworkConfig::constant(&cli_args.network)
-            .and_then(|net| net.ok_or_else(|| format!("Unknown network {}", cli_args.network)))
-    }?;
+        let mut eth2_network = Eth2NetworkConfig::constant(&cli_args.network)
+            .and_then(|net| net.ok_or_else(|| format!("Unknown network {}", cli_args.network)))?;
+        // this should always work for known networks, so always error if we fail
+        eth2_network.boot_enr = Some(bootnodes::get_for_builtin(&cli_args.network)?);
+        eth2_network
+    };
 
     let mut config = Config::new(eth2_network);
 
@@ -144,7 +155,8 @@ pub fn from_cli(cli_args: &Anchor) -> Result<Config, String> {
     for addr in cli_args.boot_nodes_enr.clone() {
         match addr.parse() {
             Ok(enr) => config.network.boot_nodes_enr.push(enr),
-            Err(_) => {
+            Err(err) => {
+                error!(enr = addr, err, "Failed to parse boot node ENR, skipping");
                 // parsing as ENR failed, try as Multiaddr
                 // let multi: Multiaddr = addr
                 //     .parse()
@@ -158,6 +170,9 @@ pub fn from_cli(cli_args: &Anchor) -> Result<Config, String> {
                 // multiaddrs.push(multi);
             }
         }
+    }
+    if cli_args.boot_nodes_enr.is_empty() {
+        config.network.boot_nodes_enr = config.eth2_network.boot_enr.clone().unwrap_or_default();
     }
 
     config.beacon_nodes_tls_certs = cli_args.beacon_nodes_tls_certs.clone();

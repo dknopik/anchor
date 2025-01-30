@@ -1333,6 +1333,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bootnodes"
+version = "0.1.0"
+dependencies = [
+ "enr",
+ "serde_yaml",
+]
+
+[[package]]
 name = "bs58"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1547,6 +1555,7 @@ version = "0.1.0"
 dependencies = [
  "anchor_validator_store",
  "beacon_node_fallback",
+ "bootnodes",
  "clap",
  "database",
  "dirs 5.0.1",

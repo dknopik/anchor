@@ -3,6 +3,7 @@
 members = [
     "anchor",
     "anchor/client",
+    "anchor/common/bootnodes",
     "anchor/common/qbft",
     "anchor/common/ssv_types",
     "anchor/common/version",
@@ -24,6 +25,7 @@ edition = "2021"
 # This table has three subsections: first the internal dependencies, then the lighthouse dependencies, then all other.
 [workspace.dependencies]
 anchor_validator_store = { path = "anchor/validator_store" }
+bootnodes = { path = "anchor/common/bootnodes" }
 client = { path = "anchor/client" }
 database = { path = "anchor/database" }
 eth = { path = "anchor/eth" }
@@ -76,6 +78,7 @@ dashmap = "6.1.0"
 derive_more = { version = "1.0.0", features = ["full"] }
 dirs = "5.0.1"
 discv5 = "0.9.0"
+enr = "0.13.0"
 futures = "0.3.30"
 hex = "0.4.3"
 hyper = "1.4"
@@ -86,6 +89,7 @@ parking_lot = "0.12"
 reqwest = "0.12.12"
 rusqlite = "0.28.0"
 serde = { version = "1.0.208", features = ["derive"] }
+serde_yaml = "0.9"
 strum = { version = "0.24", features = ["derive"] }
 tokio = { version = "1.39.2", features = [
     "rt",
