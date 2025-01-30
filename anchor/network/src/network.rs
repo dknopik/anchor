@@ -1,31 +1,29 @@
+use std::collections::HashMap;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::pin::Pin;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
-use libp2p::connection_limits::ConnectionLimits;
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::Boxed;
 use libp2p::gossipsub::{IdentTopic, MessageAuthenticity, ValidationMode};
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
-use libp2p::peer_store::memory_store;
-use libp2p::peer_store::memory_store::MemoryStore;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{
-    connection_limits, futures, gossipsub, identify, peer_store, ping, PeerId, Swarm, SwarmBuilder,
-};
+use libp2p::{futures, gossipsub, identify, ping, PeerId, Swarm, SwarmBuilder};
+use lighthouse_network::discovery::DiscoveredPeers;
 use lighthouse_network::discv5::enr::k256::sha2::{Digest, Sha256};
 use task_executor::TaskExecutor;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::behaviour::AnchorBehaviour;
 use crate::behaviour::AnchorBehaviourEvent;
 use crate::discovery::{Discovery, FIND_NODE_QUERY_CLOSEST_PEERS};
 use crate::keypair_utils::load_private_key;
 use crate::transport::build_transport;
-use crate::Config;
+use crate::{Config, Enr};
 
+use crate::peer_manager::{PeerManager, SubnetConnectActions};
 use crate::types::ssv_message::SignedSSVMessage;
 use ssz::Decode;
 use subnet_tracker::{SubnetEvent, SubnetId};
@@ -111,17 +109,6 @@ impl Network {
 
     /// Main loop for polling and handling swarm and channels.
     pub async fn run(mut self) {
-        let topic = IdentTopic::new("ssv.v2.9");
-
-        match self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
-            Err(e) => {
-                warn!(topic = %topic, "error" = ?e, "Failed to subscribe to topic");
-            }
-            Ok(_) => {
-                debug!(topic = %topic, "Subscribed to topic");
-            }
-        }
-
         loop {
             tokio::select! {
                 swarm_message = self.swarm.select_next_some() => {
@@ -155,6 +142,9 @@ impl Network {
                                 }
                                 // TODO handle gossipsub events
                             },
+                            AnchorBehaviourEvent::Discovery(DiscoveredPeers { peers }) => {
+                                self.on_discovered_peers(peers);
+                            }
                             // TODO handle other behaviour events
                             _ => {
                                 debug!(event = ?behaviour_event, "Unhandled behaviour event");
@@ -180,6 +170,19 @@ impl Network {
         }
     }
 
+    fn on_discovered_peers(&mut self, peers: HashMap<Enr, Option<Instant>>) {
+        debug!(peers =  ?peers, "Peers discovered");
+        let manager = self.peer_manager();
+        // need to collect to avoid double borrow
+        let to_dial = peers
+            .into_iter()
+            .filter_map(|(enr, _)| manager.discovered_peer(enr))
+            .collect::<Vec<_>>();
+        for dial in to_dial {
+            let _ = self.swarm.dial(dial);
+        }
+    }
+
     fn on_subnet_tracker_event(&mut self, event: SubnetEvent) {
         match event {
             SubnetEvent::Join(subnet) => {
@@ -194,24 +197,39 @@ impl Network {
                 self.swarm
                     .behaviour_mut()
                     .discovery
-                    .start_subnet_query(vec![subnet]);
-            }
-            SubnetEvent::Leave(subnet) => {
-                if let Err(err) = self
-                    .swarm
-                    .behaviour_mut()
-                    .gossipsub
-                    .unsubscribe(&subnet_to_topic(subnet))
-                {
-                    error!(?err, subnet = *subnet, "can't unsubscribe");
+                    .set_subscribed(subnet, true);
+                let SubnetConnectActions { dial, discover } =
+                    self.peer_manager().join_subnet(subnet);
+                for peer in dial {
+                    let _ = self.swarm.dial(peer);
+                }
+                if discover {
+                    self.swarm
+                        .behaviour_mut()
+                        .discovery
+                        .start_subnet_query(vec![subnet]);
                 }
             }
+            SubnetEvent::Leave(subnet) => {
+                self.swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .unsubscribe(&subnet_to_topic(subnet));
+                self.swarm
+                    .behaviour_mut()
+                    .discovery
+                    .set_subscribed(subnet, false);
+            }
         }
+    }
+
+    fn peer_manager(&mut self) -> &mut PeerManager {
+        &mut self.swarm.behaviour_mut().peer_manager
     }
 }
 
 fn subnet_to_topic(subnet: SubnetId) -> IdentTopic {
-    IdentTopic::new(format!("ssv.{}", *subnet))
+    IdentTopic::new(format!("ssv.v2.{}", *subnet))
 }
 
 async fn build_anchor_behaviour(
@@ -268,40 +286,14 @@ async fn build_anchor_behaviour(
         discovery
     };
 
-    let peer_store = peer_store::Behaviour::new(MemoryStore::new(memory_store::Config {
-        strict_mode: true, // not sure if necessary
-        ..Default::default()
-    }));
-
-    let connection_limits = {
-        let limits = ConnectionLimits::default()
-            .with_max_pending_incoming(Some(5))
-            .with_max_pending_outgoing(Some(16))
-            .with_max_established_incoming(Some(
-                (network_config.target_peers as f32
-                    * (1.0 + PEER_EXCESS_FACTOR - MIN_OUTBOUND_ONLY_FACTOR))
-                    .ceil() as u32,
-            ))
-            .with_max_established_outgoing(Some(
-                (network_config.target_peers as f32 * (1.0 + PEER_EXCESS_FACTOR)).ceil() as u32,
-            ))
-            .with_max_established(Some(
-                (network_config.target_peers as f32
-                    * (1.0 + PEER_EXCESS_FACTOR + PRIORITY_PEER_EXCESS))
-                    .ceil() as u32,
-            ))
-            .with_max_established_per_peer(Some(1));
-
-        connection_limits::Behaviour::new(limits)
-    };
+    let peer_manager = PeerManager::new(network_config);
 
     AnchorBehaviour {
         identify,
         ping: ping::Behaviour::default(),
         gossipsub,
         discovery,
-        peer_store,
-        connection_limits,
+        peer_manager,
     }
 }
 

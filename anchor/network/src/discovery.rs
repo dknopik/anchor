@@ -1,5 +1,4 @@
-use std::collections::{HashMap, VecDeque};
-use std::convert::Infallible;
+use std::collections::HashMap;
 use std::future::Future;
 use std::net::Ipv4Addr;
 use std::pin::Pin;
@@ -22,13 +21,14 @@ use libp2p::swarm::{
     THandlerOutEvent, ToSwarm,
 };
 use lighthouse_network::discovery::enr_ext::{QUIC6_ENR_KEY, QUIC_ENR_KEY};
+use lighthouse_network::discovery::DiscoveredPeers;
 use lighthouse_network::CombinedKeyExt;
 use tokio::sync::mpsc;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 use crate::Config;
 use lighthouse_network::EnrExt;
-use ssz::{Decode, Encode};
+use ssz::Decode;
 use ssz_types::length::Fixed;
 use ssz_types::typenum::U128;
 use ssz_types::{BitVector, Bitfield};
@@ -98,9 +98,6 @@ pub struct Discovery {
 
     /// The discv5 event stream.
     event_stream: EventStream,
-
-    /// Events that we can send if polled
-    events_to_send: VecDeque<ToSwarm<<Self as NetworkBehaviour>::ToSwarm, THandlerInEvent<Self>>>,
 
     /// Indicates if the discovery service has been started. When the service is disabled, this is
     /// always false.
@@ -228,7 +225,6 @@ impl Discovery {
             active_queries: FuturesUnordered::new(),
             discv5,
             event_stream,
-            events_to_send: VecDeque::new(),
             started: !network_config.disable_discovery,
             // update_ports,
             // log,
@@ -268,6 +264,14 @@ impl Discovery {
             TARGET_PEERS_FOR_GROUPED_QUERY,
             subnet_predicate(subnets),
         );
+    }
+
+    pub fn set_subscribed(&mut self, _subnet: SubnetId, _subscribed: bool) {
+        let enr = self.discv5.local_enr();
+
+        // todo(peer-store)
+
+        *self.discv5.external_enr().write() = enr;
     }
 
     /// Search for a specified number of new peers using the underlying discovery mechanism.
@@ -386,8 +390,9 @@ impl Discovery {
 }
 
 impl NetworkBehaviour for Discovery {
+    // Discovery is not a real NetworkBehaviour...
     type ConnectionHandler = dummy::ConnectionHandler;
-    type ToSwarm = Infallible;
+    type ToSwarm = DiscoveredPeers;
 
     fn handle_established_inbound_connection(
         &mut self,
@@ -437,28 +442,13 @@ impl NetworkBehaviour for Discovery {
             return Poll::Pending;
         }
 
-        if let Some(event) = self.events_to_send.pop_front() {
-            return Poll::Ready(event);
-        }
-
         // Process the query queue
         //self.process_queue();
 
         // Drive the queries and return any results from completed queries
         if let Some(peers) = self.poll_queries(cx) {
-            debug!(peers =  ?peers, "Peers discovered");
-            let mut events = peers.keys().flat_map(|enr| {
-                let peer_id = enr.peer_id();
-                enr.multiaddr()
-                    .into_iter()
-                    .map(move |address| ToSwarm::NewExternalAddrOfPeer { peer_id, address })
-            });
-            let first = events.next();
-            self.events_to_send.extend(events);
-            if let Some(first) = first {
-                // return the result to the peer manager
-                return Poll::Ready(first);
-            }
+            // return the result to the peer manager
+            return Poll::Ready(ToSwarm::GenerateEvent(DiscoveredPeers { peers }));
         }
         Poll::Pending
     }
@@ -531,12 +521,6 @@ pub fn build_enr(enr_key: &CombinedKey, config: &Config) -> Result<Enr, String> 
         builder.tcp6(tcp6_port.get());
     }
 
-    // set the "subnets" field on our ENR
-    let mut bitfield = BitVector::<U128>::new();
-    bitfield.set(9, true).unwrap();
-
-    builder.add_value::<Bytes>("subnets", &bitfield.as_ssz_bytes().into());
-
     builder
         .build(enr_key)
         .map_err(|e| format!("Could not build Local ENR: {:?}", e))
@@ -565,7 +549,7 @@ pub fn subnet_predicate(subnets: Vec<SubnetId>) -> impl Fn(&Enr) -> bool + Send 
             .any(|&s| committee_bitfield.get(*s as usize).unwrap_or(false));
 
         if !predicate {
-            debug!(
+            trace!(
                 peer_id = %enr.peer_id(),
                 "Peer found but not on any of the desired subnets",
             );

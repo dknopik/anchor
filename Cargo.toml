@@ -43,26 +43,26 @@ ssv_types = { path = "anchor/common/ssv_types" }
 subnet_tracker = { path = "anchor/subnet_tracker" }
 version = { path = "anchor/common/version" }
 
-beacon_node_fallback = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-bls = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-eth2 = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-eth2_config = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-eth2_network_config = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-health_metrics = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-lighthouse_network = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-metrics = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-safe_arith = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-sensitive_url = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-slashing_protection = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-slot_clock = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-task_executor = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c", default-features = false, features = [
+beacon_node_fallback = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+bls = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+eth2 = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+eth2_config = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+eth2_network_config = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+health_metrics = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+lighthouse_network = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+metrics = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+safe_arith = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+sensitive_url = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+slashing_protection = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+slot_clock = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+task_executor = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79", default-features = false, features = [
     "tracing",
 ] }
-types = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-unused_port = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-validator_metrics = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-validator_services = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
-validator_store = { git = "https://github.com/dknopik/lighthouse", rev = "a0e0e5c" }
+types = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+unused_port = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+validator_metrics = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+validator_services = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
+validator_store = { git = "https://github.com/dknopik/lighthouse", rev = "8d2d32b79" }
 
 alloy = { version = "0.11.0", features = [
     "sol-types",
@@ -121,6 +121,10 @@ zeroize = "1.8.1"
 [patch.crates-io]
 # todo: remove when https://github.com/supranational/blst/pull/248 is merged
 blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
+# peer store pr
+libp2p = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "c20b9e94" }
+libp2p-identity = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "c20b9e94" }
+libp2p-mplex = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "c20b9e94" }
 
 [profile.maxperf]
 inherits = "release"
@@ -128,9 +132,3 @@ inherits = "release"
 codegen-units = 1
 incremental = false
 lto = "fat"
-
-[patch.crates-io]
-# peer store pr
-libp2p = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "a5aa5bb4" }
-libp2p-identity = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "a5aa5bb4" }
-libp2p-mplex = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "a5aa5bb4" }

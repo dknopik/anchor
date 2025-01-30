@@ -1,7 +1,7 @@
 use crate::discovery::Discovery;
-use libp2p::peer_store::memory_store::MemoryStore;
+use crate::peer_manager::PeerManager;
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::{connection_limits, gossipsub, identify, peer_store, ping};
+use libp2p::{gossipsub, identify, ping};
 
 #[derive(NetworkBehaviour)]
 pub struct AnchorBehaviour {
@@ -13,6 +13,6 @@ pub struct AnchorBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     /// Discv5 Discovery protocol.
     pub discovery: Discovery,
-    pub peer_store: peer_store::Behaviour<MemoryStore>,
-    pub connection_limits: connection_limits::Behaviour,
+    /// Anchor peer manager, wrapping libp2p behaviours with minimal added logic for peer selection
+    pub peer_manager: PeerManager,
 }
