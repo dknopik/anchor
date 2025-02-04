@@ -183,7 +183,7 @@ impl SsvEventSyncer {
         deployment_block: u64,
     ) -> Result<(), ExecutionError> {
         // Start from the contract deployment block or the last block that has been processed
-        let last_processed_block = self.event_processor.db.get_last_processed_block() + 1;
+        let last_processed_block = self.event_processor.db.state().get_last_processed_block() + 1;
         let mut start_block = std::cmp::max(deployment_block, last_processed_block);
 
         loop {

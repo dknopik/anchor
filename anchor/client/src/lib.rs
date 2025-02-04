@@ -340,8 +340,9 @@ impl Client {
         );
 
         // Wait until we have an operator id and historical sync is done
-        let operator_id =
-            wait_for_operator_id_and_sync(&database, historic_finished_rx, &spec).await;
+        let operator_id = wait_for_operator_id_and_sync(&database, historic_finished_rx, &spec)
+            .await
+            .ok_or("Failed waiting for operator id")?;
 
         // Create the signature collector
         let signature_collector =
@@ -353,8 +354,8 @@ impl Client {
             QbftManager::new(processor_senders.clone(), operator_id, slot_clock.clone())
                 .map_err(|e| format!("Unable to initialize qbft manager: {e:?}"))?;
 
-        let validator_store = Arc::new(AnchorValidatorStore::<_, E>::new(
-            database,
+        let validator_store = AnchorValidatorStore::<_, E>::new(
+            database.watch(),
             signature_collector,
             qbft_manager,
             slashing_protection,
@@ -363,7 +364,8 @@ impl Client {
             genesis_validators_root,
             operator_id,
             key,
-        ));
+            executor.clone(),
+        );
 
         let duties_service = Arc::new(
             DutiesServiceBuilder::new()
@@ -630,19 +632,24 @@ async fn wait_for_operator_id_and_sync(
     database: &Arc<NetworkDatabase>,
     mut sync_notification: Receiver<()>,
     spec: &Arc<ChainSpec>,
-) -> OperatorId {
+) -> Option<OperatorId> {
     let sleep_duration = Duration::from_secs(spec.seconds_per_slot);
+    let mut state = database.watch();
     let id = loop {
-        if let Some(id) = database.get_own_id() {
-            break id;
+        select! {
+            result = state.changed() => {
+                result.ok()?;
+                if let Some(id) = state.borrow().get_own_id() {
+                    break id;
+                }
+            }
+            _ = sleep(sleep_duration) => info!("Waiting for operator id"),
         }
-        info!("Waiting for operator id");
-        sleep(sleep_duration).await;
     };
     info!(id = *id, "Operator found on chain");
     loop {
         select! {
-            _ = &mut sync_notification => return id,
+            result = &mut sync_notification => return result.ok().map(|_| id),
             _ = sleep(sleep_duration) => info!("Waiting for historical sync to finish"),
         }
     }

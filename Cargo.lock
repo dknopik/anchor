@@ -735,7 +735,6 @@ dependencies = [
  "beacon_node_fallback",
  "dashmap",
  "database",
- "eth2",
  "ethereum_ssz 0.7.1",
  "futures",
  "hex",
@@ -2135,15 +2134,14 @@ name = "database"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "dashmap",
  "openssl",
- "parking_lot",
  "r2d2",
  "r2d2_sqlite",
  "rand",
  "rusqlite",
  "ssv_types",
  "tempfile",
+ "tokio",
  "types",
 ]
 
