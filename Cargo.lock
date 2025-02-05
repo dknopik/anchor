@@ -1659,7 +1659,6 @@ dependencies = [
  "eth",
  "eth2",
  "eth2_config",
- "eth2_network_config",
  "ethereum_hashing",
  "fdlimit",
  "http_api",
@@ -1675,6 +1674,7 @@ dependencies = [
  "signature_collector",
  "slashing_protection",
  "slot_clock",
+ "ssv_network_config",
  "ssv_types",
  "strum 0.26.3",
  "subnet_tracker",
@@ -2554,6 +2554,7 @@ dependencies = [
  "rand",
  "reqwest 0.12.12",
  "serde",
+ "ssv_network_config",
  "ssv_types",
  "tokio",
  "tracing",
@@ -7168,6 +7169,16 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
+]
+
+[[package]]
+name = "ssv_network_config"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "enr",
+ "eth2_network_config",
+ "serde_yaml",
 ]
 
 [[package]]

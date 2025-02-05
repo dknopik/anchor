@@ -96,7 +96,7 @@ impl Client {
             "Starting the Anchor client"
         );
 
-        let spec = Arc::new(config.eth2_network.chain_spec::<E>()?);
+        let spec = Arc::new(config.ssv_network.eth2_network.chain_spec::<E>()?);
 
         let key = read_or_generate_private_key(&config.data_dir.join("key.pem"))?;
         let err = |e| format!("Unable to derive public key: {e:?}");
@@ -323,11 +323,7 @@ impl Client {
                     .full
                     .to_string(),
                 beacon_url: "".to_string(), // this one is not actually needed :)
-                network: match spec.config_name.as_deref() {
-                    Some("mainnet") => eth::Network::Mainnet,
-                    Some("holesky") => eth::Network::Holesky,
-                    _ => return Err(format!("Unsupported network {:?}", spec.config_name)),
-                },
+                network: config.ssv_network,
                 historic_finished_notify: Some(historic_finished_tx),
             },
         )
