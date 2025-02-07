@@ -130,7 +130,6 @@ pub mod generators {
                 cluster_id,
                 owner: owner_recipient,
                 fee_recipient: owner_recipient,
-                faulty: 0,
                 liquidated: false,
                 cluster_members: members,
             }
@@ -147,7 +146,6 @@ pub mod generators {
                 cluster_id,
                 owner: owner_recipient,
                 fee_recipient: owner_recipient,
-                faulty: 0,
                 liquidated: false,
                 cluster_members: members,
             }
@@ -425,7 +423,6 @@ pub mod assertions {
             assert_eq!(c1.cluster_id, c2.cluster_id);
             assert_eq!(c1.owner, c2.owner);
             assert_eq!(c1.fee_recipient, c2.fee_recipient);
-            assert_eq!(c1.faulty, c2.faulty);
             assert_eq!(c1.liquidated, c2.liquidated);
             assert_eq!(c1.cluster_members, c2.cluster_members);
         }
