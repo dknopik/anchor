@@ -278,7 +278,7 @@ async fn build_anchor_behaviour(
 
     let discovery = {
         // Build and start the discovery sub-behaviour
-        let mut discovery = Discovery::new(local_keypair.clone(), network_config)
+        let mut discovery = Discovery::new(local_keypair, network_config)
             .await
             .unwrap();
         // start searching for peers
