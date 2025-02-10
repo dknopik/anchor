@@ -11,7 +11,7 @@ ethereum_ssz = "0.8.1"
 ethereum_ssz_derive = "0.8.1"
 futures = { workspace = true }
 hex = "0.4.3"
-libp2p = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "c20b9e94", default-features = false, features = [
+libp2p = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "170816f", default-features = false, features = [
   "identify",
   "yamux",
   "noise",
