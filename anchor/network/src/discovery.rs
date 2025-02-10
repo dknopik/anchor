@@ -277,7 +277,7 @@ impl Discovery {
 
         let _ = subnets.set(*subnet as usize, subscribed);
 
-        if let Err(err) =  self.discv5.enr_insert("subnets", &subnets.as_ssz_bytes()) {
+        if let Err(err) = self.discv5.enr_insert("subnets", &subnets.as_ssz_bytes()) {
             error!(?err, "Unable to update ENR");
         }
     }
