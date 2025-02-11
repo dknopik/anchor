@@ -121,12 +121,6 @@ zeroize = "1.8.1"
 [patch.crates-io]
 # todo: remove when https://github.com/supranational/blst/pull/248 is merged
 blst = { git = "https://github.com/dknopik/blst", branch = "sk-conversion" }
-# todo: remove when https://github.com/libp2p/rust-libp2p/pull/5724 is merged
-# we might need to explicitly list even more crates here if something fails
-libp2p = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "170816f" }
-libp2p-identity = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "170816f" }
-libp2p-mplex = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "170816f" }
-quick-protobuf-codec = { git = "https://github.com/dknopik/rust-libp2p.git", rev = "170816f" }
 
 [profile.maxperf]
 inherits = "release"

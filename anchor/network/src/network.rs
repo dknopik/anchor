@@ -194,10 +194,6 @@ impl Network {
                 {
                     error!(?err, subnet = *subnet, "can't subscribe");
                 }
-                self.swarm
-                    .behaviour_mut()
-                    .discovery
-                    .set_subscribed(subnet, true);
                 let SubnetConnectActions { dial, discover } =
                     self.peer_manager().join_subnet(subnet);
                 for peer in dial {
@@ -215,10 +211,6 @@ impl Network {
                     .behaviour_mut()
                     .gossipsub
                     .unsubscribe(&subnet_to_topic(subnet));
-                self.swarm
-                    .behaviour_mut()
-                    .discovery
-                    .set_subscribed(subnet, false);
             }
         }
     }

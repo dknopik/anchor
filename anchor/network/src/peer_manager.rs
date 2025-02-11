@@ -27,12 +27,12 @@ use tracing::debug;
 const MIN_PEERS_PER_SUBNET: u16 = 3;
 
 pub struct PeerManager {
-    pub peer_store: peer_store::Behaviour<MemoryStore<Enr>>,
-    pub connection_limits: connection_limits::Behaviour,
-    pub connected: HashSet<PeerId>,
-    pub needed_subnets: HashSet<SubnetId>,
-    pub target_peers: usize,
-    pub max_with_priority_peers: usize,
+    peer_store: peer_store::Behaviour<MemoryStore<Enr>>,
+    connection_limits: connection_limits::Behaviour,
+    connected: HashSet<PeerId>,
+    needed_subnets: HashSet<SubnetId>,
+    target_peers: usize,
+    max_with_priority_peers: usize,
 }
 
 impl PeerManager {
@@ -75,16 +75,16 @@ impl PeerManager {
     }
 
     /// report a discovered peer, and return dial opts if we want to dial it
-    pub fn discovered_peer(&mut self, peer: Enr) -> Option<DialOpts> {
-        let id = peer.peer_id();
+    pub fn discovered_peer(&mut self, enr: Enr) -> Option<DialOpts> {
+        let id = enr.peer_id();
 
         // first, make the store aware of it
-        for multiaddr in peer.multiaddr() {
+        for multiaddr in enr.multiaddr() {
             self.peer_store.update_address(&id, &multiaddr)
         }
         self.peer_store
             .store_mut()
-            .insert_custom_data(&id, peer.clone());
+            .insert_custom_data(&id, enr.clone());
 
         let dial = self.connected.len() < self.target_peers || self.qualifies_for_priority(&id);
 
