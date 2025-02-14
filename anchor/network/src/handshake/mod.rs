@@ -261,7 +261,7 @@ mod tests {
             remote_swarm.connect(&mut local_swarm).await;
 
             initiate(
-                &local_node_info,
+                &remote_node_info,
                 remote_swarm.behaviour_mut(),
                 *local_swarm.local_peer_id(),
             );
