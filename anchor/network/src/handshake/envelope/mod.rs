@@ -1,8 +1,11 @@
-mod codec;
-mod generated;
+mod generated {
+    pub mod message;
+}
 
+use crate::handshake::envelope::Error::SignatureVerification;
 use crate::handshake::node_info::NodeInfo;
 use discv5::libp2p_identity::PublicKey;
+pub use generated::message::pb::Envelope;
 use libp2p::identity::DecodingError;
 use quick_protobuf::{BytesReader, Error as ProtoError, MessageRead, MessageWrite, Writer};
 use thiserror::Error;
@@ -70,7 +73,3 @@ pub fn make_unsigned(
     }
     Ok(buf)
 }
-
-use crate::handshake::envelope::Error::SignatureVerification;
-pub use codec::Codec;
-pub use generated::message::pb::Envelope;
