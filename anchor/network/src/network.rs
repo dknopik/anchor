@@ -1,3 +1,4 @@
+use crate::network::gossipsub::MessageId;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::pin::Pin;
 use std::time::Duration;
@@ -5,14 +6,19 @@ use std::time::Duration;
 use futures::StreamExt;
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::Boxed;
-use libp2p::gossipsub::{IdentTopic, MessageAuthenticity, ValidationMode};
+use libp2p::gossipsub::{
+    IdentTopic, Message, MessageAcceptance, MessageAuthenticity, ValidationMode,
+};
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{futures, gossipsub, identify, ping, PeerId, Swarm, SwarmBuilder};
 use lighthouse_network::discovery::DiscoveredPeers;
 use lighthouse_network::discv5::enr::k256::sha2::{Digest, Sha256};
+use lighthouse_network::EnrExt;
+use subnet_tracker::{SubnetEvent, SubnetId};
 use task_executor::TaskExecutor;
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::behaviour::AnchorBehaviour;
@@ -21,12 +27,6 @@ use crate::discovery::{Discovery, FIND_NODE_QUERY_CLOSEST_PEERS};
 use crate::keypair_utils::load_private_key;
 use crate::transport::build_transport;
 use crate::Config;
-
-use crate::types::ssv_message::SignedSSVMessage;
-use lighthouse_network::EnrExt;
-use ssz::Decode;
-use subnet_tracker::{SubnetEvent, SubnetId};
-use tokio::sync::mpsc;
 
 pub struct Network {
     swarm: Swarm<AnchorBehaviour>,
@@ -116,26 +116,17 @@ impl Network {
                                         message_id,
                                         message,
                                     } => {
-                                        debug!(
-                                            source = ?propagation_source,
-                                            id = ?message_id,
-                                            "Received SignedSSVMessage"
+                                        self.on_message_received(
+                                            propagation_source,
+                                            &message_id,
+                                            message,
                                         );
-                                        match SignedSSVMessage::from_ssz_bytes(&message.data) {
-                                            Ok(deserialized_message) => {
-                                                debug!(msg = ?deserialized_message, "SignedSSVMessage deserialized");
-                                            }
-                                            Err(e) => {
-                                                error!("error" = ?e, "Failed to deserialize SignedSSVMessage");
-                                            }
-                                        }
                                     }
                                     // TODO handle gossipsub events
                                     _ => {
                                         debug!(event = ?ge, "Unhandled gossipsub event");
                                     }
                                 }
-                                // TODO handle gossipsub events
                             },
                             // Inform the peer manager about discovered peers.
                             //
@@ -176,6 +167,37 @@ impl Network {
                 // TODO match input channels
             }
         }
+    }
+
+    fn on_message_received(
+        &mut self,
+        propagation_source: PeerId,
+        message_id: &MessageId,
+        message: Message,
+    ) {
+        debug!(
+            source = ?propagation_source,
+            id = ?message_id,
+            "Received SignedSSVMessage"
+        );
+
+        let result = self.validate_message(message);
+        let acceptance = if let Err(f) = &result {
+            f.into()
+        } else {
+            MessageAcceptance::Accept
+        };
+        let _ = self
+            .swarm
+            .behaviour_mut()
+            .gossipsub
+            .report_message_validation_result(message_id, &propagation_source, acceptance);
+
+        let Ok(_message) = result else {
+            return;
+        };
+
+        // todo pass on to app
     }
 
     fn on_subnet_tracker_event(&mut self, event: SubnetEvent) {
