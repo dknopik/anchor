@@ -37,12 +37,6 @@ pub struct Failed {
     pub error: Box<Error>,
 }
 
-/// Network behaviour handling the handshake protocol.
-pub struct Handler {
-    /// Local node's information
-    node_info: NodeInfo,
-}
-
 pub fn create_behaviour(keypair: Keypair) -> Behaviour {
     // NodeInfoProtocol is the protocol.ID used for handshake
     const NODE_INFO_PROTOCOL: &str = "/ssv/info/0.0.1";
