@@ -1,9 +1,8 @@
 use crate::handshake::envelope::{make_unsigned, Envelope};
+use crate::handshake::node_info::Error::Validation;
 use discv5::libp2p_identity::{Keypair, SigningError};
 use serde::{Deserialize, Serialize};
 use serde_json;
-
-use crate::handshake::node_info::Error::Validation;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -116,9 +115,9 @@ impl NodeInfo {
 
 #[cfg(test)]
 mod tests {
+    use crate::handshake::envelope::Envelope;
     use crate::handshake::node_info::{NodeInfo, NodeMetadata};
     use libp2p::identity::Keypair;
-    use crate::handshake::envelope::Envelope;
 
     #[test]
     fn test_node_info_seal_consume() {
