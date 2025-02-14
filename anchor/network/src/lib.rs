@@ -3,6 +3,7 @@
 mod behaviour;
 mod config;
 mod discovery;
+mod handshake;
 mod keypair_utils;
 mod network;
 mod transport;
