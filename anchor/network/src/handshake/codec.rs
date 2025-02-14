@@ -41,7 +41,7 @@ impl Codec {
         let mut msg_buf = Vec::new();
         let num_bytes_read = io.take(MAXIMUM_SIZE).read_to_end(&mut msg_buf).await?;
         trace!(?num_bytes_read, "read handshake");
-        let env = Envelope::decode_from_slice(&msg_buf)?;
+        let env = Envelope::parse_and_verify(&msg_buf)?;
         let node_info = NodeInfo::unmarshal(&env.payload)?;
         Ok(node_info)
     }

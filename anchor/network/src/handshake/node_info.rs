@@ -116,9 +116,9 @@ impl NodeInfo {
 
 #[cfg(test)]
 mod tests {
-    use crate::handshake::envelope::parse_envelope;
     use crate::handshake::node_info::{NodeInfo, NodeMetadata};
     use libp2p::identity::Keypair;
+    use crate::handshake::envelope::Envelope;
 
     #[test]
     fn test_node_info_seal_consume() {
@@ -140,7 +140,7 @@ mod tests {
 
         let data = envelope.encode_to_vec().unwrap();
 
-        let parsed_env = parse_envelope(&data).expect("Consume failed");
+        let parsed_env = Envelope::parse_and_verify(&data).expect("Consume failed");
         let parsed_node_info =
             NodeInfo::unmarshal(&parsed_env.payload).expect("TODO: panic message");
 
@@ -151,7 +151,7 @@ mod tests {
             a00e42407120c7373762f6e6f6465696e666f1aa5017b22456e7472696573223a5b22222c22686f6c65736b7\
             9222c227b5c224e6f646556657273696f6e5c223a5c22676574682f785c222c5c22457865637574696f6e4e6f64655c223a5c22676574682f785c222c5c22436f6e73656e7375734e6f64655c223a5c22707279736d2f785c222c5c225375626e6574735c223a5c2230303030303030303030303030303030303030303030303030303030303030305c227d225d7d2a473045022100b8a2a668113330369e74b86ec818a87009e2a351f7ee4c0e431e1f659dd1bc3f02202b1ebf418efa7fb0541f77703bea8563234a1b70b8391d43daa40b6e7c3fcc84").unwrap();
 
-        let parsed_env = parse_envelope(&encoded).expect("Consume failed");
+        let parsed_env = Envelope::parse_and_verify(&encoded).expect("Consume failed");
         let parsed_node_info =
             NodeInfo::unmarshal(&parsed_env.payload).expect("TODO: panic message");
 
