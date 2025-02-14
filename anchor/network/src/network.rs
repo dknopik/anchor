@@ -34,7 +34,7 @@ pub struct Network {
     swarm: Swarm<AnchorBehaviour>,
     subnet_event_receiver: mpsc::Receiver<SubnetEvent>,
     peer_id: PeerId,
-    handshake_handler: handshake::Handler,
+    node_info: NodeInfo,
 }
 
 impl Network {
@@ -70,7 +70,7 @@ impl Network {
             ),
             subnet_event_receiver,
             peer_id,
-            handshake_handler: handshake::Handler::new(node_info),
+            node_info,
         };
 
         info!(%peer_id, "Network starting");
@@ -168,7 +168,8 @@ impl Network {
                                 }
                             }
                             AnchorBehaviourEvent::Handshake(event) => {
-                                self.handshake_handler.handle_handshake_event(
+                                handshake::handle_event(
+                                    &self.node_info,
                                     &mut self.swarm.behaviour_mut().handshake,
                                     event,
                                 );
@@ -183,7 +184,8 @@ impl Network {
                             endpoint: ConnectedPoint::Dialer { .. },
                             ..
                         } => {
-                            self.handshake_handler.initiate_handshake(
+                            handshake::initiate(
+                                    &self.node_info,
                                 &mut self.swarm.behaviour_mut().handshake,
                                 peer_id
                             );
