@@ -9,6 +9,7 @@ use clap::Parser;
 use eth::generated::{SSVContract, SSVContract::Cluster};
 use keysplit::output::OutputData;
 use ssv_network_config::SsvNetworkConfig;
+use tracing::info;
 
 #[derive(Parser, Clone, Debug)]
 #[clap(
@@ -43,10 +44,13 @@ pub struct Register {
 }
 
 pub fn register_validator(options: Register) -> Result<(), String> {
+    info!("----- Anchor Validator Management -----");
+    info!("Reading shares from {}", options.share_file);
     let data: OutputData = serde_json::from_reader(
         File::open(options.share_file).map_err(|e| format!("Unable to read file: {e:?}"))?,
     )
     .map_err(|e| format!("Unable to parse file: {e:?}"))?;
+    info!("Successfully read file");
 
     let mnemonic = options
         .mnemonic
@@ -86,6 +90,7 @@ pub fn register_validator(options: Register) -> Result<(), String> {
             .strip_prefix("0x")
             .unwrap_or(&share.payload.shares_data);
         let data = Bytes::from(hex::decode(data).map_err(|_| "share data is not hex")?);
+        info!("Registering validator {}...", share.payload.public_key);
 
         let result: Result<_, String> = runtime.block_on(async {
             contract
@@ -112,5 +117,6 @@ pub fn register_validator(options: Register) -> Result<(), String> {
         });
         result?;
     }
+    info!("Done!");
     Ok(())
 }

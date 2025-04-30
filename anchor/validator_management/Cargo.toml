@@ -13,3 +13,4 @@ ssv_network_config = { workspace = true }
 eth = { workspace = true }
 hex = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }

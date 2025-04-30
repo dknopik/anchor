@@ -8785,6 +8785,7 @@ dependencies = [
  "serde_json",
  "ssv_network_config",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
