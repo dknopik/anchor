@@ -12,6 +12,15 @@ sol! {
             bool active;
             uint256 balance;
         }
+
+        function registerValidator(
+            bytes calldata publicKey,
+            uint64[] memory operatorIds,
+            bytes calldata sharesData,
+            uint256 amount,
+            Cluster memory cluster
+        );
+
         event OperatorAdded(uint64 indexed operatorId, address indexed owner, bytes publicKey, uint256 fee);
         event OperatorRemoved(uint64 indexed operatorId);
         event ValidatorAdded(address indexed owner, uint64[] operatorIds, bytes publicKey, bytes shares, Cluster cluster);

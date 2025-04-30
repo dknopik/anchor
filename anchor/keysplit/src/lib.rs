@@ -18,7 +18,7 @@ mod cli;
 mod crypto;
 mod error;
 mod keystore;
-mod output;
+pub mod output;
 mod split;
 mod util;
 

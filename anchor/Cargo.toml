@@ -35,3 +35,4 @@ tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 types = { workspace = true }
+validator_management = { workspace = true }

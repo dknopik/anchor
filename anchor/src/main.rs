@@ -17,6 +17,7 @@ use task_executor::ShutdownReason;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, Layer, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use types::EthSpecId;
+use validator_management::{ValidatorManagement, ValidatorManagementSubcommand};
 
 #[derive(Parser, Clone, Debug)]
 struct Cli {
@@ -32,6 +33,7 @@ pub enum AnchorSubcommands {
     Node(Box<Node>),
     Keysplit(Keysplit),
     Keygen(Keygen),
+    Validator(ValidatorManagement),
 }
 
 fn main() {
@@ -86,6 +88,12 @@ fn main() {
         AnchorSubcommands::Keygen(keygen) => {
             if let Err(e) = keygen::run_keygen(keygen, &global_config.data_dir) {
                 error!("Keygen error: {:?}", e);
+            }
+        }
+        AnchorSubcommands::Validator(validator_management) => {
+            let ValidatorManagementSubcommand::Register(register) = validator_management.subcommand;
+            if let Err(e) = validator_management::register_validator(register) {
+                error!("Registration error: {:?}", e);
             }
         }
     }

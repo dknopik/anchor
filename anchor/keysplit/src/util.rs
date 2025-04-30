@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use base64::prelude::*;
 use hex::FromHex;
 use openssl::{pkey::Public, rsa::Rsa};
 use serde::{Deserialize, Deserializer, Serializer};
@@ -24,19 +23,15 @@ pub(crate) fn serialize_rsa<S>(key: &Rsa<Public>, s: S) -> Result<S::Ok, S::Erro
 where
     S: Serializer,
 {
-    let serialized_key = key.public_key_to_pem().map_err(serde::ser::Error::custom)?;
-
-    // Convert the decoded data to a string
-    let mut pem_string = String::from_utf8(serialized_key).map_err(serde::ser::Error::custom)?;
-
-    // Fix the header - replace PKCS8 header with PKCS1 header
-    pem_string = pem_string
-        .replace(
-            "-----BEGIN PUBLIC KEY-----",
-            "-----BEGIN RSA PUBLIC KEY-----",
-        )
-        .replace("-----END PUBLIC KEY-----", "-----END RSA PUBLIC KEY-----");
-
-    let encoded = BASE64_STANDARD.encode(pem_string.clone());
+    let encoded = operator_key::public::to_base64(key).map_err(serde::ser::Error::custom)?;
     s.serialize_str(&encoded)
+}
+
+pub(crate) fn deserialize_rsa<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Rsa<Public>, D::Error> {
+    let data = String::deserialize(deserializer)?;
+    let key =
+        operator_key::public::from_base64(data.as_bytes()).map_err(serde::de::Error::custom)?;
+    Ok(key)
 }

@@ -1,53 +1,61 @@
 use alloy::primitives::Keccak256;
 use chrono::{DateTime, Utc};
 use openssl::{pkey::Public, rsa::Rsa};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use types::{Address, PublicKey};
 
-use crate::{EncryptedKeyShare, ValidatorKeys, cli::SharedKeygenOptions, util::serialize_rsa};
+use crate::{
+    EncryptedKeyShare, ValidatorKeys,
+    cli::SharedKeygenOptions,
+    util::{deserialize_rsa, serialize_rsa},
+};
 
 const VERSION: &str = "v1.2.1";
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OutputData {
-    version: String,
+    pub version: String,
     #[serde(rename = "createdAt")]
-    created_at: DateTime<Utc>,
-    shares: Vec<OutputKeyShare>,
+    pub created_at: DateTime<Utc>,
+    pub shares: Vec<OutputKeyShare>,
 }
 
-#[derive(Debug, Serialize)]
-struct OutputKeyShare {
-    data: OutputKeyData,
-    payload: Payload,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OutputKeyShare {
+    pub data: OutputKeyData,
+    pub payload: Payload,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Payload {
     #[serde(rename = "publicKey")]
-    public_key: PublicKey,
+    pub public_key: PublicKey,
     #[serde(rename = "operatorIds")]
-    operator_ids: Vec<u64>,
+    pub operator_ids: Vec<u64>,
     #[serde(rename = "sharesData")]
-    shares_data: String,
+    pub shares_data: String,
 }
 
-#[derive(Debug, Serialize)]
-struct OutputKeyData {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OutputKeyData {
     #[serde(rename = "ownerNonce")]
-    owner_nonce: u64,
+    pub owner_nonce: u64,
     #[serde(rename = "ownerAddress")]
-    owner_address: Address,
+    pub owner_address: Address,
     #[serde(rename = "publicKey")]
-    public_key: PublicKey,
-    operators: Vec<Operator>,
+    pub public_key: PublicKey,
+    pub operators: Vec<Operator>,
 }
 
-#[derive(Debug, Serialize)]
-struct Operator {
-    id: u64,
-    #[serde(serialize_with = "serialize_rsa", rename = "operatorKey")]
-    public_key: Rsa<Public>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Operator {
+    pub id: u64,
+    #[serde(
+        serialize_with = "serialize_rsa",
+        deserialize_with = "deserialize_rsa",
+        rename = "operatorKey"
+    )]
+    pub public_key: Rsa<Public>,
 }
 
 impl From<EncryptedKeyShare> for Operator {
@@ -60,7 +68,7 @@ impl From<EncryptedKeyShare> for Operator {
 }
 
 impl OutputData {
-    pub fn new(
+    pub(crate) fn new(
         encrypted_keys: Vec<EncryptedKeyShare>,
         shared: SharedKeygenOptions,
         keys: ValidatorKeys,
@@ -88,7 +96,7 @@ impl OutputData {
 }
 
 impl Payload {
-    pub fn new(
+    pub(crate) fn new(
         encrypted_keys: &[EncryptedKeyShare],
         keys: &ValidatorKeys,
         nonce: u64,
