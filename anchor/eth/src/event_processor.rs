@@ -170,19 +170,7 @@ impl EventProcessor {
             )));
         }
 
-        let data = publicKey.as_ref();
-
-        // If the data is 704 bytes, remove the ssv encoding. Else, just parse the key
-        let data = if data.len() == 704 {
-            let mut data = &data[64..];
-            // while there is a 0 at the end of the data, remove it
-            while let [rest @ .., 0] = data {
-                data = rest;
-            }
-            data
-        } else {
-            data
-        };
+        let data = get_key_data_from_event_bytes(&publicKey);
 
         // Construct the Operator and insert it into the database
         let operator = Operator::new(data, operator_id, owner).map_err(|e| {

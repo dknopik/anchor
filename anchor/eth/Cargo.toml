@@ -16,6 +16,8 @@ futures = { workspace = true }
 hex = { workspace = true }
 indexmap = { workspace = true }
 metrics = { workspace = true }
+openssl = { workspace = true }
+operator_key = { workspace = true }
 reqwest = { workspace = true }
 rusqlite = { workspace = true }
 sensitive_url = { workspace = true }

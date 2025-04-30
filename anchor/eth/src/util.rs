@@ -241,6 +241,22 @@ fn provider_from_transports(
     ProviderBuilder::default().on_client(client)
 }
 
+pub fn get_key_data_from_event_bytes(data: &Bytes) -> &[u8] {
+    let data = data.as_ref();
+
+    // If the data is 704 bytes, remove the ssv encoding. Else, just parse the key
+    if data.len() == 704 {
+        let mut data = &data[64..];
+        // while there is a 0 at the end of the data, remove it
+        while let [rest @ .., 0] = data {
+            data = rest;
+        }
+        data
+    } else {
+        data
+    }
+}
+
 #[cfg(test)]
 mod eth_util_tests {
     use std::str::FromStr;

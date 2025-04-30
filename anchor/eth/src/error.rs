@@ -18,3 +18,5 @@ impl Display for ExecutionError {
         write!(f, "{self:?}")
     }
 }
+
+impl std::error::Error for ExecutionError {}

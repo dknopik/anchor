@@ -48,32 +48,34 @@ pub fn onchain_split(
     // Split the secret key into N shares
     let split_keys = split_keys(&onchain.shared, secret_key)?;
 
+    let rpc = onchain
+        .rpc
+        .or_else(|| std::env::var("ETH_RPC").ok())
+        .ok_or_else(|| KeysplitError::Misc("Specify RPC via --rpc or ETH_RPC env var".into()))?;
+
     // Construct DB and perform sync
     let db = build_db();
-    let mut syncer =
-        SsvEventSyncer::new_keysplit(db.clone(), onchain.rpc, global_config.ssv_network);
+    let syncer = SsvEventSyncer::new_keysplit(db.clone(), rpc, global_config.ssv_network);
+
+    let mut operators = onchain.shared.operators.0;
+    operators.sort_unstable();
 
     // Block on the sync, we cannot proceed until this is finished and this prevents refactoring the
     // entire application into async
     let runtime = tokio::runtime::Runtime::new()
         .map_err(|e| KeysplitError::Misc(format!("Failed to create a new tokio runtime: {e}")))?;
-    runtime.block_on(async { syncer.keysplit_sync().await });
+    let (nonce, keys) = runtime.block_on(async {
+        (
+            syncer.get_nonce(onchain.shared.owner).await,
+            syncer.get_pubkeys(operators).await,
+        )
+    });
 
-    let public_keys = db
-        .get_keys_for_operators(onchain.shared.operators.0)
-        .map_err(|_| {
-            KeysplitError::InvalidOperator("One or more operators do not exist".to_string())
-        })?;
+    let public_keys = keys
+        .map_err(|e| KeysplitError::InvalidOperator(format!("Failed to fetch operators: {e}")))?;
 
-    let nonce = match db.get_nonce_for_owner(onchain.shared.owner) {
-        Ok(Some(n)) => n + 1,
-        Ok(None) => 0,
-        Err(e) => {
-            return Err(KeysplitError::Database(format!(
-                "Failed to fetch nonce: {e}"
-            )));
-        }
-    };
+    let nonce =
+        nonce.map_err(|e| KeysplitError::Database(format!("Failed to fetch nonce: {e}")))?;
 
     // With each keyshare, zip it with its corresponding rsa public key
     Ok((

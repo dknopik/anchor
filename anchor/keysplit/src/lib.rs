@@ -62,7 +62,14 @@ pub fn run_keysplitter(
 
     // 2) Extract the validator keys from the keystore file
     info!("Extracting keys from keystore file...");
-    let keys = extract_key(&keystore, &shared.password)?;
+    let password = shared
+        .password
+        .clone()
+        .or_else(|| std::env::var("KS_PW").ok())
+        .ok_or_else(|| {
+            KeysplitError::Misc("please provide a password via --password or KS_PW env var".into())
+        })?;
+    let keys = extract_key(&keystore, &password)?;
     info!("Successfully extracted keys from keystore file");
 
     // 3) Split the key into keyshares and group together relevant information

@@ -39,7 +39,7 @@ pub struct Onchain {
     pub shared: SharedKeygenOptions,
 
     #[clap(long, help = "RPC endpoint to access L1 data", value_name = "ENDPOINT")]
-    pub rpc: String,
+    pub rpc: Option<String>,
 }
 
 // Options for manual splitting
@@ -75,7 +75,7 @@ pub struct SharedKeygenOptions {
         help = "Password for the validator keystore",
         value_name = "PASSWORD"
     )]
-    pub password: String,
+    pub password: Option<String>,
 
     #[clap(
         long,

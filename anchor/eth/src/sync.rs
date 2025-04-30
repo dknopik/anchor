@@ -14,6 +14,7 @@ use alloy::{
 };
 use database::NetworkDatabase;
 use futures::{FutureExt, StreamExt, stream::FuturesOrdered};
+use openssl::{pkey::Public, rsa::Rsa};
 use reqwest::Url;
 use sensitive_url::SensitiveUrl;
 use ssv_network_config::SsvNetworkConfig;
@@ -22,10 +23,11 @@ use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::{
     error::ExecutionError,
+    event_parser::EventDecoder,
     event_processor::{EventProcessor, Mode},
     generated::SSVContract,
     index_sync, metrics,
-    util::http_with_timeout_and_fallback,
+    util::{get_key_data_from_event_bytes, http_with_timeout_and_fallback},
     voluntary_exit_processor::ExitTx,
 };
 
@@ -203,6 +205,62 @@ impl SsvEventSyncer {
                 }
             }
         }
+    }
+
+    pub async fn get_nonce(&self, owner: Address) -> Result<u64, Box<dyn std::error::Error>> {
+        let block = self.rpc_client.get_block_number().await?;
+        let logs = self
+            .rpc_client
+            .get_logs(
+                &Filter::new()
+                    .address(self.network.ssv_contract)
+                    .from_block(0)
+                    .to_block(block)
+                    .events([SSVContract::ValidatorAdded::SIGNATURE.to_string()])
+                    .topic1(owner.into_word()),
+            )
+            .await?;
+        Ok(logs.len() as u64)
+    }
+
+    pub async fn get_pubkeys(
+        &self,
+        indices: Vec<u64>,
+    ) -> Result<Vec<Rsa<Public>>, Box<dyn std::error::Error>> {
+        let block = self.rpc_client.get_block_number().await?;
+        let logs = self
+            .rpc_client
+            .get_logs(
+                &Filter::new()
+                    .address(self.network.ssv_contract)
+                    .from_block(0)
+                    .to_block(block)
+                    .events([SSVContract::OperatorAdded::SIGNATURE.to_string()]),
+            )
+            .await?;
+        let pks = logs
+            .into_iter()
+            .filter_map(|log| {
+                let SSVContract::OperatorAdded {
+                    operatorId: operator_id, // The ID of the newly registered operator
+                    publicKey,               // The RSA public key
+                    ..
+                } = SSVContract::OperatorAdded::decode_from_log(&log).ok()?;
+
+                if !indices.contains(&operator_id) {
+                    return None;
+                }
+
+                let data = get_key_data_from_event_bytes(&publicKey);
+                Some(operator_key::public::from_base64(data).map_err(|err| err.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if pks.len() != indices.len() {
+            Err("not all operators found".to_string())?;
+        }
+
+        Ok(pks)
     }
 
     // Get access to the current status of the sync

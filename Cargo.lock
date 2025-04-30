@@ -2843,6 +2843,8 @@ dependencies = [
  "hex",
  "indexmap 2.9.0",
  "metrics",
+ "openssl",
+ "operator_key",
  "reqwest 0.12.15",
  "rusqlite",
  "sensitive_url",
