@@ -13,6 +13,13 @@ sol! {
             uint256 balance;
         }
 
+        function bulkRegisterValidator(
+            bytes[] calldata publicKey,
+            uint64[] memory operatorIds,
+            bytes[] calldata sharesData,
+            uint256 amount,
+            Cluster memory cluster
+        );
         function registerValidator(
             bytes calldata publicKey,
             uint64[] memory operatorIds,

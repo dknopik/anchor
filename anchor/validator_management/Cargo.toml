@@ -10,6 +10,7 @@ clap = { workspace = true }
 keysplit = { workspace = true }
 serde_json = { workspace = true }
 ssv_network_config = { workspace = true }
+ssv_types = { workspace = true }
 eth = { workspace = true }
 hex = { workspace = true }
 tokio = { workspace = true }

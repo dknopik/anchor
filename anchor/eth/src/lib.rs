@@ -1,10 +1,11 @@
 pub use sync::{Config, SsvEventSyncer};
 mod error;
-mod event_parser;
+pub mod event_parser;
 mod event_processor;
 pub mod generated;
 pub mod index_sync;
 mod metrics;
+pub mod scanner;
 mod sync;
 mod util;
 pub mod voluntary_exit_processor;

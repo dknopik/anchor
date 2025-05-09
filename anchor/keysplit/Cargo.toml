@@ -19,10 +19,13 @@ hex = { workspace = true }
 openssl = { workspace = true }
 operator_key = { workspace = true }
 pbkdf2 = { workspace = true }
+rayon = "1.10.0"
 scrypt = "0.11.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+ssv_network_config = { workspace = true }
+ssv_types = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 types = { workspace = true }

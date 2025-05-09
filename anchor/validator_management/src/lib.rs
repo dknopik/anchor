@@ -1,14 +1,19 @@
-use std::{fs::File, str::FromStr};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    fs::File,
+    str::FromStr,
+};
 
 use alloy::{
     primitives::{Bytes, U256},
-    providers::ProviderBuilder,
+    providers::{ProviderBuilder, WalletProvider},
     signers::local::{MnemonicBuilder, coins_bip39::English},
 };
 use clap::Parser;
-use eth::generated::{SSVContract, SSVContract::Cluster};
+use eth::{event_parser::EventDecoder, generated::SSVContract, scanner::Scanner};
 use keysplit::output::OutputData;
 use ssv_network_config::SsvNetworkConfig;
+use ssv_types::OperatorId;
 use tracing::info;
 
 #[derive(Parser, Clone, Debug)]
@@ -66,6 +71,9 @@ pub fn register_validator(options: Register) -> Result<(), String> {
     let network = SsvNetworkConfig::constant(&options.network)
         .map_err(|_| "Invalid Network")?
         .ok_or("Invalid Network")?;
+    let contract = network.ssv_contract;
+
+    let scanner = Scanner::new(rpc, network);
 
     let provider = ProviderBuilder::new()
         .wallet(
@@ -76,44 +84,102 @@ pub fn register_validator(options: Register) -> Result<(), String> {
                 .build()
                 .map_err(|_| "Invalid mnemonic")?,
         )
-        .on_http(rpc);
+        .on_provider(scanner.provider());
 
-    let contract = SSVContract::new(network.ssv_contract, &provider);
+    let contract = SSVContract::new(contract, &provider);
 
     let runtime = tokio::runtime::Runtime::new()
         .map_err(|e| format!("Failed to create a new tokio runtime: {e}"))?;
 
-    for share in data.shares {
-        let data = share
+    let mut count = 0;
+    let chunks = data.shares.chunk_by(|a, b| {
+        let split = count == 25 || a.payload.operator_ids != b.payload.operator_ids;
+        if split {
+            count = 0;
+        }
+        count += 1;
+        !split
+    });
+
+    let mut cluster_states = HashMap::new();
+
+    for chunk in chunks {
+        let mut datas = chunk
+            .iter()
+            .map(|s| {
+                let data = s
+                    .payload
+                    .shares_data
+                    .strip_prefix("0x")
+                    .unwrap_or(&s.payload.shares_data);
+                hex::decode(data)
+                    .map_err(|_| "share data is not hex")
+                    .map(Bytes::from)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        info!(
+            validators = chunk
+                .iter()
+                .map(|s| s.payload.public_key.as_hex_string())
+                .collect::<Vec<String>>()
+                .join(", "),
+            "Registering validator(s)...",
+        );
+
+        let operator_ids = chunk
+            .first()
+            .ok_or("empty chunk")?
             .payload
-            .shares_data
-            .strip_prefix("0x")
-            .unwrap_or(&share.payload.shares_data);
-        let data = Bytes::from(hex::decode(data).map_err(|_| "share data is not hex")?);
-        info!("Registering validator {}...", share.payload.public_key);
+            .operator_ids
+            .iter()
+            .map(|id| OperatorId(*id))
+            .collect::<Vec<_>>();
 
         let result: Result<_, String> = runtime.block_on(async {
-            contract
-                .registerValidator(
+            let cluster = match cluster_states.entry(operator_ids) {
+                Entry::Occupied(occupied) => occupied.into_mut(),
+                Entry::Vacant(vacant) => {
+                    let cluster = scanner.get_cluster_data(provider.wallet().default_signer().address(), vacant.key().as_slice()).await.map_err(|e| format!("{e}"))?;
+                    vacant.insert(cluster)
+                }
+            };
+
+            let receipt = if let [share] = chunk {
+                contract.registerValidator(
                     share.payload.public_key.serialize().into(),
                     share.data.operators.iter().map(|o| o.id).collect(),
-                    data,
+                    datas.pop().ok_or("missing data")?,
                     U256::from_str("100_000000000000000000").unwrap(), // todo make configurable
-                    Cluster {
-                        // todo scan blockchain
-                        validatorCount: 0,
-                        networkFeeIndex: 0,
-                        index: 0,
-                        active: true,
-                        balance: U256::ZERO,
-                    },
+                    cluster.clone(),
                 )
-                .send()
-                .await
-                .map_err(|e| format!("{e}"))?
-                .watch()
-                .await
-                .map_err(|e| format!("{e}"))
+                    .send()
+                    .await
+            } else {
+                contract
+                    .bulkRegisterValidator(
+                        chunk.iter().map(|s| s.payload.public_key.serialize().into()).collect(),
+                        chunk.first().map(|s| s.data.operators.iter().map(|o| o.id).collect()).ok_or("empty")?,
+                        datas,
+                        U256::from_str("100_000000000000000000").unwrap(), // todo make configurable
+                        cluster.clone(),
+                    )
+                    .send()
+                    .await
+            }
+            .map_err(|e| format!("{e}"))?
+            .get_receipt()
+            .await
+            .map_err(|e| format!("{e}"))?;
+
+            let l = receipt
+                .logs()
+                .iter()
+                .rev()
+                .filter_map(|l| SSVContract::ValidatorAdded::decode_from_log(l).ok())
+                .next()
+                .ok_or("No ValidatorAdded from successful tx")?;
+            *cluster = l.cluster;
+            Ok(())
         });
         result?;
     }

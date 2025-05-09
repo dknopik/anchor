@@ -14,7 +14,6 @@ use alloy::{
 };
 use database::NetworkDatabase;
 use futures::{FutureExt, StreamExt, stream::FuturesOrdered};
-use openssl::{pkey::Public, rsa::Rsa};
 use reqwest::Url;
 use sensitive_url::SensitiveUrl;
 use ssv_network_config::SsvNetworkConfig;
@@ -23,11 +22,10 @@ use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::{
     error::ExecutionError,
-    event_parser::EventDecoder,
     event_processor::{EventProcessor, Mode},
     generated::SSVContract,
     index_sync, metrics,
-    util::{get_key_data_from_event_bytes, http_with_timeout_and_fallback},
+    util::http_with_timeout_and_fallback,
     voluntary_exit_processor::ExitTx,
 };
 
@@ -207,62 +205,6 @@ impl SsvEventSyncer {
         }
     }
 
-    pub async fn get_nonce(&self, owner: Address) -> Result<u64, Box<dyn std::error::Error>> {
-        let block = self.rpc_client.get_block_number().await?;
-        let logs = self
-            .rpc_client
-            .get_logs(
-                &Filter::new()
-                    .address(self.network.ssv_contract)
-                    .from_block(0)
-                    .to_block(block)
-                    .events([SSVContract::ValidatorAdded::SIGNATURE.to_string()])
-                    .topic1(owner.into_word()),
-            )
-            .await?;
-        Ok(logs.len() as u64)
-    }
-
-    pub async fn get_pubkeys(
-        &self,
-        indices: Vec<u64>,
-    ) -> Result<Vec<Rsa<Public>>, Box<dyn std::error::Error>> {
-        let block = self.rpc_client.get_block_number().await?;
-        let logs = self
-            .rpc_client
-            .get_logs(
-                &Filter::new()
-                    .address(self.network.ssv_contract)
-                    .from_block(0)
-                    .to_block(block)
-                    .events([SSVContract::OperatorAdded::SIGNATURE.to_string()]),
-            )
-            .await?;
-        let pks = logs
-            .into_iter()
-            .filter_map(|log| {
-                let SSVContract::OperatorAdded {
-                    operatorId: operator_id, // The ID of the newly registered operator
-                    publicKey,               // The RSA public key
-                    ..
-                } = SSVContract::OperatorAdded::decode_from_log(&log).ok()?;
-
-                if !indices.contains(&operator_id) {
-                    return None;
-                }
-
-                let data = get_key_data_from_event_bytes(&publicKey);
-                Some(operator_key::public::from_base64(data).map_err(|err| err.to_string()))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if pks.len() != indices.len() {
-            Err("not all operators found".to_string())?;
-        }
-
-        Ok(pks)
-    }
-
     // Get access to the current status of the sync
     pub fn is_synced(&self) -> watch::Receiver<bool> {
         self.is_synced.subscribe()
@@ -401,10 +343,7 @@ impl SsvEventSyncer {
         let mut start_block = std::cmp::max(deployment_block, last_processed_block + 1);
 
         loop {
-            let current_block = self.rpc_client.get_block_number().await.map_err(|e| {
-                error!(?e, "Failed to fetch block number");
-                ExecutionError::RpcError(format!("Failed to fetch block number: {e}"))
-            })?;
+            let current_block = self.rpc_client.get_block_number().await?;
             metrics::set_gauge(&metrics::EXECUTION_CURRENT_BLOCK, current_block as i64);
 
             // Basic verification
@@ -564,7 +503,7 @@ impl SsvEventSyncer {
         // exceed this as we can assume there is some underlying connection issue
         async move {
             debug!("Fetching logs");
-            let timer = metrics::start_timer_vec(
+            let _timer = metrics::start_timer_vec(
                 &metrics::EXECUTION_LOG_FETCH_TIME,
                 &[format!("{}", to_block - from_block + 1).as_str()],
             );
@@ -572,7 +511,6 @@ impl SsvEventSyncer {
             match rpc_client.get_logs(&filter).await {
                 Ok(logs) => {
                     debug!(log_count = logs.len(), "Successfully fetched logs");
-                    metrics::stop_timer(timer);
                     Ok(logs)
                 }
                 Err(e) => {
@@ -596,9 +534,7 @@ impl SsvEventSyncer {
                         .boxed()
                         .await
                     } else {
-                        Err(ExecutionError::RpcError(format!(
-                            "Error fetching logs: {e}"
-                        )))
+                        Err(ExecutionError::RpcError(e))
                     }
                 }
             }
@@ -667,9 +603,7 @@ impl SsvEventSyncer {
                         return Err(ExecutionError::InvalidEvent("Block not found".to_string()));
                     }
                     Err(e) => {
-                        return Err(ExecutionError::RpcError(format!(
-                            "Failed to fetch block {e}"
-                        )));
+                        return Err(ExecutionError::RpcError(e));
                     }
                 };
 
