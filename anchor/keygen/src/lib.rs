@@ -37,6 +37,13 @@ pub enum KeygenError {
 
 #[derive(Zeroize, ZeroizeOnDrop, PartialEq, Debug)]
 pub struct SecurePassword(String);
+
+impl AsRef<str> for SecurePassword {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
 impl SecurePassword {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()

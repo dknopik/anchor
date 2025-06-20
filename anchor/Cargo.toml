@@ -16,6 +16,7 @@ spec-minimal = []
 
 [dependencies]
 async-channel = { workspace = true }
+base64 = { workspace = true }
 bls = { workspace = true }
 clap = { workspace = true }
 client = { workspace = true }
@@ -23,9 +24,13 @@ dirs = { workspace = true }
 futures = { workspace = true }
 keygen = { workspace = true }
 keysplit = { workspace = true }
+eth2_keystore = { workspace = true }
 logging = { workspace = true }
 metrics = { workspace = true }
+openssl = { workspace = true }
+rand = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 strum = { workspace = true }
 task_executor = { workspace = true }
 tokio = { workspace = true }

@@ -1,6 +1,20 @@
-use std::path::PathBuf;
+use std::{
+    fs,
+    fs::File,
+    io::{ErrorKind, Read, Seek, SeekFrom},
+    path::PathBuf,
+};
 
+use base64::{Engine, prelude::BASE64_STANDARD};
 use clap::Parser;
+use eth2_keystore::{
+    Error, IV_SIZE, SALT_SIZE, default_kdf, encrypt,
+    json_keystore::{
+        Aes128Ctr, ChecksumModule, Cipher, CipherModule, Crypto, EmptyMap, EmptyString, KdfModule,
+        Sha256Checksum,
+    },
+};
+use openssl::{pkey::Private, rsa::Rsa};
 use tracing::{error, info};
 
 mod environment;
@@ -9,7 +23,7 @@ use client::{
     config::{self, DEFAULT_ROOT_DIR},
 };
 use environment::Environment;
-use keygen::Keygen;
+use keygen::{Keygen, encryption::decrypt, read_password_from_user};
 use keysplit::Keysplit;
 use logging::{
     CountLayer, Libp2pDiscv5TracingLayer, LoggerConfig, LoggingLayer,
@@ -32,6 +46,7 @@ pub enum AnchorSubcommands {
     Node(Box<Node>),
     Keysplit(Keysplit),
     Keygen(Keygen),
+    ConvertKey(ConvertKey),
 }
 
 fn main() {
@@ -58,7 +73,7 @@ fn main() {
     let environment = Environment::default();
 
     match cli.subcommand {
-        AnchorSubcommands::Node(node) => start_anchor(*node, environment),
+        AnchorSubcommands::Node(node) => error!("Do not use this build to run a node."),
         AnchorSubcommands::Keysplit(keygen) => {
             if let Err(e) = keysplit::run_keysplitter(keygen) {
                 error!("Keysplit error: {:?}", e);
@@ -67,6 +82,11 @@ fn main() {
         AnchorSubcommands::Keygen(keygen) => {
             if let Err(e) = keygen::run_keygen(keygen) {
                 error!("Keygen error: {:?}", e);
+            }
+        }
+        AnchorSubcommands::ConvertKey(convert_key) => {
+            if let Err(e) = run_convert_key(convert_key) {
+                error!("Conversion error: {:?}", e);
             }
         }
     }
@@ -274,4 +294,147 @@ fn enable_logging(anchor_config: &Node) -> (Option<WorkerGuard>, Option<Libp2pDi
         ),
         libp2p_discv5_layer,
     )
+}
+
+#[derive(Parser, Clone, Debug)]
+#[clap(
+    name = "convert-key",
+    about = "Convert an Anchor key to a go-ssv key (EXPERIMENTAL)"
+)]
+pub struct ConvertKey {
+    #[clap(long, help = "Path to output key to.", value_name = "OUTPUT_PATH")]
+    pub output_path: PathBuf,
+
+    #[clap(
+        long,
+        help = "Overwrite output file if it already exists.",
+        value_name = "FORCE",
+        default_value = "false"
+    )]
+    pub force: bool,
+
+    #[clap(
+        long,
+        help = "Enable password encryption for output file. Required for keys intended for ssv-dkg."
+    )]
+    pub encrypted: bool,
+
+    #[clap(help = "Path to an encrypted or unencrypted Anchor key.")]
+    pub input_path: PathBuf,
+}
+
+fn run_convert_key(params: ConvertKey) -> Result<(), String> {
+    let key = read_key(params.input_path)?;
+
+    let secret_pem = key
+        .private_key_to_pem()
+        .map_err(|e| format!("Unable to convert key: {e}"))?;
+    let public_pem = key
+        .public_key_to_pem_pkcs1()
+        .map_err(|e| format!("Unable to convert key: {e}"))?;
+    let public_base64 = BASE64_STANDARD.encode(&public_pem);
+
+    let output = if params.encrypted {
+        info!("Please provide the password for the output file.");
+        let pw =
+            read_password_from_user(true).map_err(|e| format!("Unable to read password: {e}"))?;
+
+        info!("Encrypting...");
+
+        let salt = rand::random::<[u8; SALT_SIZE]>();
+        let iv = rand::random::<[u8; IV_SIZE]>().to_vec().into();
+        let kdf = default_kdf(salt.to_vec());
+        let cipher = Cipher::Aes128Ctr(Aes128Ctr { iv });
+
+        let (cipher_text, checksum) = encrypt(&secret_pem, pw.as_ref().as_ref(), &kdf, &cipher)
+            .map_err(|e| format!("Error encrypting: {e:?}"))?;
+
+        let keystore = Crypto {
+            kdf: KdfModule {
+                function: kdf.function(),
+                params: kdf,
+                message: EmptyString,
+            },
+            checksum: ChecksumModule {
+                function: Sha256Checksum::function(),
+                params: EmptyMap,
+                message: checksum.to_vec().into(),
+            },
+            cipher: CipherModule {
+                function: cipher.function(),
+                params: cipher,
+                message: cipher_text.into(),
+            },
+        };
+
+        serde_json::to_string(&keystore)
+            .map_err(|e| format!("Unable to serialize keystore: {e}"))?
+    } else {
+        BASE64_STANDARD.encode(&secret_pem)
+    };
+
+    if params.output_path.exists() && !params.force {
+        return Err("Output file already exists. Use --force to overwrite.".to_string());
+    };
+
+    fs::write(params.output_path, output)
+        .map_err(|e| format!("Unable to write output file: {e}"))?;
+
+    info!("Done.");
+
+    Ok(())
+}
+
+fn read_key(path: PathBuf) -> Result<Rsa<Private>, String> {
+    match File::open(path) {
+        Ok(mut file) => {
+            let key_string = {
+                // Treat the file as unencrypted
+                let mut key_string = String::new();
+                match file.read_to_string(&mut key_string) {
+                    Ok(_) => key_string,
+                    Err(e) => {
+                        if matches!(e.kind(), ErrorKind::InvalidData) {
+                            // Invalid UTF-8, meaning the keyfile was encrypted
+
+                            // Reset file cursor to the beginning
+                            file.seek(SeekFrom::Start(0)).map_err(|seek_err| {
+                                format!("Failed to seek to start of file: {}", seek_err)
+                            })?;
+
+                            let mut contents = Vec::new();
+                            file.read_to_end(&mut contents)
+                                .map_err(|e| format!("Unable to read file: {e}"))?;
+
+                            loop {
+                                info!(
+                                    "Input file appears to be encrypted, please enter password for it"
+                                );
+                                let password = read_password_from_user(false)
+                                    .map_err(|e| format!("Unable to read password: {e:?}"))?;
+                                if password.is_empty() {
+                                    return Err("Decryption cancelled".to_string());
+                                }
+                                match decrypt(password, &contents) {
+                                    Ok(decrypted) => break decrypted,
+                                    Err(e) => {
+                                        error!("Unable to decrypt rsa keyfile: {e:?}");
+                                        error!(
+                                            "Please retry password. Enter empty password to quit"
+                                        );
+                                    }
+                                }
+                            }
+                        } else {
+                            // Some other error
+                            return Err(format!("Unable to read file: {e}"));
+                        }
+                    }
+                }
+            };
+            Rsa::private_key_from_pem(key_string.as_ref())
+                .map_err(|e| format!("Unable to read private key: {e:?}"))
+        }
+        Err(err) => Err(format!("Unable to open file: {err}")),
+    }
 }
