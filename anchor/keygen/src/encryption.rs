@@ -38,7 +38,7 @@ pub enum EncryptionError {
 }
 
 // Encrypt the input with a password
-pub(crate) fn encrypt(input: &[u8], password: SecurePassword) -> Result<Vec<u8>, EncryptionError> {
+pub fn encrypt(input: &[u8], password: SecurePassword) -> Result<Vec<u8>, EncryptionError> {
     // Generate a random salt
     let mut salt = [0u8; 16];
     OsRng

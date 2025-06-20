@@ -8,7 +8,7 @@ use std::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use clap::Parser;
 use eth2_keystore::{
-    Error, IV_SIZE, SALT_SIZE, default_kdf, encrypt,
+    Error, IV_SIZE, SALT_SIZE, default_kdf,
     json_keystore::{
         Aes128Ctr, ChecksumModule, Cipher, CipherModule, Crypto, EmptyMap, EmptyString, KdfModule,
         Sha256Checksum,
@@ -23,7 +23,11 @@ use client::{
     config::{self, DEFAULT_ROOT_DIR},
 };
 use environment::Environment;
-use keygen::{Keygen, encryption::decrypt, read_password_from_user};
+use keygen::{
+    Keygen,
+    encryption::{decrypt, encrypt},
+    read_password_from_user,
+};
 use keysplit::Keysplit;
 use logging::{
     CountLayer, Libp2pDiscv5TracingLayer, LoggerConfig, LoggingLayer,
@@ -32,7 +36,7 @@ use logging::{
 use task_executor::ShutdownReason;
 use tracing::Level;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing_subscriber::{EnvFilter, fmt, fmt::format, prelude::*};
 use types::EthSpecId;
 
 #[derive(Parser, Clone, Debug)]
@@ -319,12 +323,22 @@ pub struct ConvertKey {
     )]
     pub encrypted: bool,
 
+    #[clap(
+        long,
+        help = "Convert from go-ssv key to Anchor key.pem. Only supports encrypted input files."
+    )]
+    pub reverse: bool,
+
     #[clap(help = "Path to an encrypted or unencrypted Anchor key.")]
     pub input_path: PathBuf,
 }
 
 fn run_convert_key(params: ConvertKey) -> Result<(), String> {
-    let key = read_key(params.input_path)?;
+    let key = if !params.reverse {
+        read_anchor_key(params.input_path)?
+    } else {
+        read_ssv_key(params.input_path)?
+    };
 
     let secret_pem = key
         .private_key_to_pem()
@@ -334,43 +348,59 @@ fn run_convert_key(params: ConvertKey) -> Result<(), String> {
         .map_err(|e| format!("Unable to convert key: {e}"))?;
     let public_base64 = BASE64_STANDARD.encode(&public_pem);
 
-    let output = if params.encrypted {
-        info!("Please provide the password for the output file.");
-        let pw =
-            read_password_from_user(true).map_err(|e| format!("Unable to read password: {e}"))?;
+    let output = match (params.encrypted, params.reverse) {
+        (true, false) => {
+            info!("Please provide the password for the output file.");
+            let pw = read_password_from_user(true)
+                .map_err(|e| format!("Unable to read password: {e}"))?;
 
-        info!("Encrypting...");
+            info!("Encrypting...");
 
-        let salt = rand::random::<[u8; SALT_SIZE]>();
-        let iv = rand::random::<[u8; IV_SIZE]>().to_vec().into();
-        let kdf = default_kdf(salt.to_vec());
-        let cipher = Cipher::Aes128Ctr(Aes128Ctr { iv });
+            let salt = rand::random::<[u8; SALT_SIZE]>();
+            let iv = rand::random::<[u8; IV_SIZE]>().to_vec().into();
+            let kdf = default_kdf(salt.to_vec());
+            let cipher = Cipher::Aes128Ctr(Aes128Ctr { iv });
 
-        let (cipher_text, checksum) = encrypt(&secret_pem, pw.as_ref().as_ref(), &kdf, &cipher)
-            .map_err(|e| format!("Error encrypting: {e:?}"))?;
+            let (cipher_text, checksum) =
+                eth2_keystore::encrypt(&secret_pem, pw.as_ref().as_ref(), &kdf, &cipher)
+                    .map_err(|e| format!("Error encrypting: {e:?}"))?;
 
-        let keystore = Crypto {
-            kdf: KdfModule {
-                function: kdf.function(),
-                params: kdf,
-                message: EmptyString,
-            },
-            checksum: ChecksumModule {
-                function: Sha256Checksum::function(),
-                params: EmptyMap,
-                message: checksum.to_vec().into(),
-            },
-            cipher: CipherModule {
-                function: cipher.function(),
-                params: cipher,
-                message: cipher_text.into(),
-            },
-        };
+            let keystore = Crypto {
+                kdf: KdfModule {
+                    function: kdf.function(),
+                    params: kdf,
+                    message: EmptyString,
+                },
+                checksum: ChecksumModule {
+                    function: Sha256Checksum::function(),
+                    params: EmptyMap,
+                    message: checksum.to_vec().into(),
+                },
+                cipher: CipherModule {
+                    function: cipher.function(),
+                    params: cipher,
+                    message: cipher_text.into(),
+                },
+            };
 
-        serde_json::to_string(&keystore)
-            .map_err(|e| format!("Unable to serialize keystore: {e}"))?
-    } else {
-        BASE64_STANDARD.encode(&secret_pem)
+            Vec::<u8>::from(
+                serde_json::to_string(&keystore)
+                    .map_err(|e| format!("Unable to serialize keystore: {e}"))?,
+            )
+        }
+        (false, false) => BASE64_STANDARD.encode(&secret_pem).into(),
+        (true, true) => {
+            info!("Please provide the password for the output Anchor key file.");
+            let password = read_password_from_user(true)
+                .map_err(|e| format!("Unable to read password: {e}"))?;
+
+            // Encrypt the private key
+            encrypt(&secret_pem, password).map_err(|e| format!("Unable to encrypt: {e}"))?
+        }
+        (false, true) => {
+            info!("Private key will NOT be encrypted");
+            secret_pem
+        }
     };
 
     if params.output_path.exists() && !params.force {
@@ -385,7 +415,7 @@ fn run_convert_key(params: ConvertKey) -> Result<(), String> {
     Ok(())
 }
 
-fn read_key(path: PathBuf) -> Result<Rsa<Private>, String> {
+fn read_anchor_key(path: PathBuf) -> Result<Rsa<Private>, String> {
     match File::open(path) {
         Ok(mut file) => {
             let key_string = {
@@ -437,4 +467,20 @@ fn read_key(path: PathBuf) -> Result<Rsa<Private>, String> {
         }
         Err(err) => Err(format!("Unable to open file: {err}")),
     }
+}
+
+fn read_ssv_key(path: PathBuf) -> Result<Rsa<Private>, String> {
+    let crypto: Crypto =
+        serde_json::from_reader(File::open(path).map_err(|e| format!("Unable to open file: {e}"))?)
+            .map_err(|e| format!("Unable to read file: {e}"))?;
+    info!("Please provide the password for the input SSV key file.");
+
+    let password =
+        read_password_from_user(false).map_err(|e| format!("Unable to read password: {e}"))?;
+
+    let plain_text = eth2_keystore::decrypt(password.as_ref().as_ref(), &crypto)
+        .map_err(|e| format!("Unable to decrypt: {e:?}"))?;
+
+    Rsa::private_key_from_pem(plain_text.as_ref())
+        .map_err(|e| format!("Unable to read private key: {e:?}"))
 }
