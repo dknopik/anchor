@@ -69,7 +69,6 @@ pub struct UnsignedSSVMessage {
 
 /// A QBFT specific message
 #[derive(Debug, Clone, Encode, Decode)]
-#[cfg_attr(feature = "arbitrary-fuzz", derive(arbitrary::Arbitrary))]
 pub struct QbftMessage {
     pub qbft_message_type: QbftMessageType,
     pub height: u64,
@@ -515,7 +514,6 @@ impl<E: EthSpec> Decode for ContributionWrapper<E> {
 pub type Contributions<E> = VariableList<ContributionWrapper<E>, U13>;
 
 #[derive(Clone, Debug, TreeHash, PartialEq, Eq, Encode, Decode)]
-#[cfg_attr(feature = "arbitrary-fuzz", derive(arbitrary::Arbitrary))]
 pub struct BeaconVote {
     pub block_root: Hash256,
     pub source: Checkpoint,
@@ -652,4 +650,84 @@ pub enum BeaconVoteValidationError {
     TargetNotAfterSource(String),
     #[error("Attestation would be slashable: {0}")]
     SlashableAttestation(NotSafe),
+}
+
+// Custom Arbitrary implementations for fuzzing support
+#[cfg(feature = "arbitrary-fuzz")]
+mod arbitrary_impls {
+    use super::*;
+    use arbitrary::{Arbitrary, Unstructured, Result as ArbitraryResult};
+
+    // Custom Arbitrary implementation for QbftMessage
+    impl<'a> Arbitrary<'a> for QbftMessage {
+        fn arbitrary(u: &mut Unstructured<'a>) -> ArbitraryResult<Self> {
+            // Generate identifier with max 56 bytes
+            let id_len = u.int_in_range(0..=56)?;
+            let mut id_data = Vec::with_capacity(id_len);
+            for _ in 0..id_len {
+                id_data.push(u8::arbitrary(u)?);
+            }
+            let identifier = VariableList::new(id_data).map_err(|_| arbitrary::Error::IncorrectFormat)?;
+
+            // Generate hash (32 bytes)
+            let mut hash_bytes = [0u8; 32];
+            for byte in &mut hash_bytes {
+                *byte = u8::arbitrary(u)?;
+            }
+            let root = Hash256::from(hash_bytes);
+
+            // Generate justifications - keep them small for fuzzing
+            let rc_justifications = Vec::new(); // Keep empty for simplicity
+            let prepare_justifications = Vec::new(); // Keep empty for simplicity
+
+            Ok(QbftMessage {
+                qbft_message_type: QbftMessageType::arbitrary(u)?,
+                height: u64::arbitrary(u)?,
+                round: u64::arbitrary(u)?,
+                identifier,
+                root,
+                data_round: u64::arbitrary(u)?,
+                round_change_justification: rc_justifications,
+                prepare_justification: prepare_justifications,
+            })
+        }
+    }
+
+    // Custom Arbitrary implementation for BeaconVote
+    impl<'a> Arbitrary<'a> for BeaconVote {
+        fn arbitrary(u: &mut Unstructured<'a>) -> ArbitraryResult<Self> {
+            // Generate block root (32 bytes)
+            let mut block_root_bytes = [0u8; 32];
+            for byte in &mut block_root_bytes {
+                *byte = u8::arbitrary(u)?;
+            }
+            let block_root = Hash256::from(block_root_bytes);
+
+            // Generate source checkpoint
+            let mut source_root_bytes = [0u8; 32];
+            for byte in &mut source_root_bytes {
+                *byte = u8::arbitrary(u)?;
+            }
+            let source = Checkpoint {
+                epoch: types::Epoch::from(u64::arbitrary(u)?),
+                root: Hash256::from(source_root_bytes),
+            };
+
+            // Generate target checkpoint
+            let mut target_root_bytes = [0u8; 32];
+            for byte in &mut target_root_bytes {
+                *byte = u8::arbitrary(u)?;
+            }
+            let target = Checkpoint {
+                epoch: types::Epoch::from(u64::arbitrary(u)?),
+                root: Hash256::from(target_root_bytes),
+            };
+
+            Ok(BeaconVote {
+                block_root,
+                source,
+                target,
+            })
+        }
+    }
 }

@@ -1,5 +1,5 @@
 mod consensus_message;
-mod duty_state;
+pub mod duty_state;
 mod message_counts;
 mod partial_signature;
 
@@ -39,6 +39,7 @@ use crate::{
     duty_state::{DutyState, OperatorState},
     partial_signature::validate_partial_signature_message,
 };
+
 
 const VALIDATOR_CLEANER_NAME: &str = "validator_cleaner";
 
@@ -252,7 +253,7 @@ pub enum Error {
     Processor(#[from] ::processor::Error),
 }
 
-struct ValidationContext<'a, S> {
+pub struct ValidationContext<'a, S> {
     pub signed_ssv_message: &'a SignedSSVMessage,
     pub role: Role, // Small value type can remain owned
     pub committee_info: &'a CommitteeInfo,
@@ -316,7 +317,7 @@ impl<S: SlotClock + 'static, D: DutiesProvider> Validator<S, D> {
         }
     }
 
-    fn validate_decoded_message(
+    pub fn validate_decoded_message(
         &self,
         signed_ssv_message: &SignedSSVMessage,
     ) -> Result<ValidatedMessage, ValidationFailure> {
@@ -425,7 +426,7 @@ impl<S: SlotClock + 'static, D: DutiesProvider> Validator<S, D> {
     }
 }
 
-fn validate_ssv_message(
+pub fn validate_ssv_message(
     validation_context: ValidationContext<impl SlotClock>,
     duty_state: &mut DutyState,
     duty_provider: Arc<impl DutiesProvider>,

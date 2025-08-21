@@ -4,13 +4,13 @@ use std::{
 };
 
 use ssv_types::{
-    CommitteeId, Epoch, OperatorId, Slot,
     consensus::{QbftMessage, QbftMessageType},
     message::SignedSSVMessage,
     partial_sig::PartialSignatureMessages,
+    CommitteeId, Epoch, OperatorId, Slot,
 };
 
-use crate::{FIRST_ROUND, ValidationFailure, message_counts::MessageCounts};
+use crate::{message_counts::MessageCounts, ValidationFailure, FIRST_ROUND};
 // duty_state.rs
 //
 // This file defines structures that help track and validate the consensus process.
@@ -21,7 +21,7 @@ use crate::{FIRST_ROUND, ValidationFailure, message_counts::MessageCounts};
 //    data.
 
 /// DutyState manages the state for duty validation across operators and slots
-pub(crate) struct DutyState {
+pub struct DutyState {
     /// Tracks the duty state for an operator
     operators: HashMap<OperatorId, OperatorState>,
     /// The number of slots for which state is stored (defines the size of the circular buffer)
@@ -30,7 +30,7 @@ pub(crate) struct DutyState {
 
 impl DutyState {
     /// Creates a new DutyState with the specified storage capacity
-    pub(crate) fn new(stored_slot_count: usize) -> Self {
+    pub fn new(stored_slot_count: usize) -> Self {
         Self {
             operators: HashMap::new(),
             stored_slot_count,
@@ -325,12 +325,12 @@ impl SignerState {
 
 #[cfg(test)]
 mod tests {
-    use ssv_types::{OperatorId, Slot, consensus::QbftMessageType, msgid::Role};
+    use ssv_types::{consensus::QbftMessageType, msgid::Role, OperatorId, Slot};
 
     use super::*;
     use crate::{
         hash_data,
-        tests::{QbftMessageBuilder, create_signed_consensus_message},
+        tests::{create_signed_consensus_message, QbftMessageBuilder},
     };
 
     #[test]
