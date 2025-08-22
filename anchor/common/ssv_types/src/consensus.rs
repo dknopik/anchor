@@ -748,8 +748,8 @@ mod arbitrary_impls {
             let root = Hash256::from(hash_bytes);
 
             // Generate justifications - keep them small for fuzzing
-            let rc_justifications = Vec::new(); // Keep empty for simplicity
-            let prepare_justifications = Vec::new(); // Keep empty for simplicity
+            let rc_justifications = VariableList::empty(); // Keep empty for simplicity
+            let prepare_justifications = VariableList::empty(); // Keep empty for simplicity
 
             Ok(QbftMessage {
                 qbft_message_type: QbftMessageType::arbitrary(u)?,
