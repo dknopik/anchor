@@ -105,3 +105,27 @@ pub trait DutiesProvider: Sync + Send + 'static {
 
     fn get_voluntary_exit_duty_count(&self, slot: Slot, pubkey: &PublicKeyBytes) -> u64;
 }
+
+pub struct TestingDutiesProvider;
+
+impl DutiesProvider for TestingDutiesProvider {
+    fn is_validator_in_sync_committee(
+        &self,
+        _committee_period: u64,
+        _validator_index: ValidatorIndex,
+    ) -> bool {
+        true
+    }
+
+    fn is_epoch_known_for_proposers(&self, _epoch: Epoch) -> bool {
+        true
+    }
+
+    fn is_validator_proposer_at_slot(&self, _slot: Slot, _validator_index: ValidatorIndex) -> bool {
+        true
+    }
+
+    fn get_voluntary_exit_duty_count(&self, _slot: Slot, _pubkey: &PublicKeyBytes) -> u64 {
+        0
+    }
+}
