@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 // Re-Exports for Manager
 pub use config::{Config, ConfigBuilder};
@@ -234,6 +237,16 @@ where
         self.config.committee_members().contains(operator_id)
     }
 
+    /// Checks if we have a quorum of unique committee operators from these messages.
+    fn check_quorum<'a>(&self, msgs: impl IntoIterator<Item = &'a SignedSSVMessage>) -> bool {
+        let unique_operators = msgs
+            .into_iter()
+            .flat_map(|justification| justification.operator_ids())
+            .filter(|operator_id| self.check_committee(operator_id))
+            .collect::<HashSet<_>>();
+        unique_operators.len() >= self.config.quorum_size()
+    }
+
     // Perform base QBFT relevant message verification. This verfiication is applicable to all QBFT
     // message types
     // Return type expresses that we either have
@@ -434,7 +447,7 @@ where
 
         // If we are passed the first round, make sure that the justifications actually justify the
         // received proposal
-        if round > Round::default() && !self.validate_justifications(&wrapped_msg) {
+        if round > Round::default() && !self.validate_proposal_justifications(&wrapped_msg) {
             warn!(from = ?operator_id, "Justification verifiction failed");
             return;
         }
@@ -484,14 +497,13 @@ where
     // A QBFT Message contains fields to a list of round change justifications and prepare
     // justifications. We must go through each of these individually and verify the validity of each
     // one
-    fn validate_justifications(&self, msg: &WrappedQbftMessage) -> bool {
+    fn validate_proposal_justifications(&self, msg: &WrappedQbftMessage) -> bool {
         // Record if any of the round change messages have a value that was prepared
-        let mut previously_prepared = false;
         let mut max_prepared_round = 0;
         let mut max_prepared_msg = None;
 
         // Make sure we have a quorum of round change messages
-        if msg.qbft_message.round_change_justification.len() < self.config.quorum_size() {
+        if !self.check_quorum(&msg.qbft_message.round_change_justification) {
             warn!("Did not receive a quorum of round change messages");
             return false;
         }
@@ -533,8 +545,6 @@ where
 
             // If the data_round > 1, that means we have prepared a value in previous rounds
             if round_change.data_round > 1 {
-                previously_prepared = true;
-
                 // also track the max prepared value and round
                 if round_change.data_round > max_prepared_round {
                     max_prepared_round = round_change.data_round;
@@ -545,9 +555,9 @@ where
 
         // If there was a value that was also previously prepared, we must also verify all of the
         // prepare justifications
-        if previously_prepared {
+        if let Some(max_prepared_msg) = max_prepared_msg {
             // Make sure we have a quorum of prepare messages
-            if msg.qbft_message.prepare_justification.len() < self.config.quorum_size() {
+            if self.check_quorum(&msg.qbft_message.prepare_justification) {
                 warn!(
                     num_justifications = msg.qbft_message.prepare_justification.len(),
                     "Not enough prepare messages for quorum"
@@ -556,53 +566,59 @@ where
             }
 
             // Make sure that the roots match
-            if msg.qbft_message.root
-                != max_prepared_msg
-                    .clone()
-                    .expect("Exists as we have a previously prepared value")
-                    .root
-            {
+            if msg.qbft_message.root != max_prepared_msg.root {
                 warn!("Highest prepared does not match proposed data");
                 return false;
             }
 
             // Validate each prepare message matches highest prepared round/value
             for signed_prepare in &msg.qbft_message.prepare_justification {
-                // The qbft message is represented as VariableList<u8> in the signed message,
-                // deserialize this into a qbft message
-                let Ok(typed_signed_prepare) = SignedSSVMessage::from_ssz_bytes(signed_prepare)
-                else {
-                    warn!("Invalid Signed Prepare encoded within a message");
-                    return false;
-                };
-                let prepare =
-                    match QbftMessage::from_ssz_bytes(typed_signed_prepare.ssv_message().data()) {
-                        Ok(data) => data,
-                        Err(_) => return false,
-                    };
-
-                // Make sure this is a prepare message
-                if prepare.qbft_message_type != QbftMessageType::Prepare {
-                    warn!("Expected a prepare message");
-                    return false;
-                }
-
-                let wrapped = WrappedQbftMessage {
-                    signed_message: typed_signed_prepare.clone(),
-                    qbft_message: prepare.clone(),
-                };
-
-                if self.validate_message(&wrapped).is_none() {
-                    warn!("PREPARE message validation failed");
-                    return false;
-                }
-
-                if prepare.root != msg.qbft_message.root {
-                    warn!("Proposed data mismatch");
+                if !self.is_valid_prepare_justification_for_round_and_root(
+                    signed_prepare,
+                    max_prepared_msg.data_round.into(),
+                    &max_prepared_msg.root,
+                ) {
                     return false;
                 }
             }
         }
+        true
+    }
+
+    fn is_valid_prepare_justification_for_round_and_root(
+        &self,
+        justification: &SignedSSVMessage,
+        round: Round,
+        root: &Hash256,
+    ) -> bool {
+        // The qbft message is represented as Vec<u8> in the signed message, deserialize this into
+        // a qbft message
+        let Ok(prepare) = QbftMessage::from_ssz_bytes(justification.ssv_message().data()) else {
+            warn!("Undecodable justification");
+            return false;
+        };
+
+        // Make sure this is a prepare message
+        if prepare.qbft_message_type != QbftMessageType::Prepare {
+            warn!("Expected a prepare message");
+            return false;
+        }
+
+        if prepare.height != *self.instance_height as u64 {
+            warn!("PREPARE height incorrect");
+            return false;
+        }
+
+        if prepare.round != round.get() as u64 {
+            warn!("PREPARE round incorrect");
+            return false;
+        }
+
+        if &prepare.root != root {
+            warn!("Proposed data mismatch");
+            return false;
+        }
+
         true
     }
 
@@ -800,6 +816,39 @@ where
         if u8::from(self.state) >= u8::from(InstanceState::Complete) {
             debug!(from=*operator_id, ?self.state, "ROUNDCHANGE message while in invalid state");
             return;
+        }
+
+        let qbft_msg = &wrapped_msg.qbft_message;
+        // If this is a "prepared" round change, we have to check the justifications.
+        // see https://github.com/ssvlabs/ssv/blob/7999b26308990b3f364d60e1618a8b6cf5b2d3e6/protocol/v2/qbft/instance/round_change.go#L304
+        if qbft_msg.data_round > 0 {
+            if !self.check_quorum(&qbft_msg.round_change_justification) {
+                debug!(
+                    from = *operator_id,
+                    justifications = qbft_msg.round_change_justification.len(),
+                    quorum = self.config.quorum_size(),
+                    "prepared ROUNDCHANGE has no quorum"
+                );
+                return;
+            }
+
+            if qbft_msg.data_round > qbft_msg.round {
+                debug!(
+                    from = *operator_id,
+                    data_round = qbft_msg.data_round,
+                    round = qbft_msg.round,
+                    "ROUNDCHANGE has prepared round after round"
+                );
+                return;
+            }
+
+            for justification in qbft_msg.round_change_justification.iter() {
+                self.is_valid_prepare_justification_for_round_and_root(
+                    justification,
+                    round,
+                    &qbft_msg.root,
+                );
+            }
         }
 
         debug!(from = ?operator_id, state = ?self.state, "ROUNDCHANGE received");
@@ -1081,7 +1130,8 @@ where
 
                 // Validate the proposal, if this is a valid proposal then this is our prepare
                 // justification
-                if self.validate_justifications(wrapped_round_change) {
+                // TODO DANIEL IS THIS OK?
+                if self.validate_proposal_justifications(wrapped_round_change) {
                     return (
                         vec![wrapped_round_change.signed_message.clone()],
                         Some(round_change.root),
