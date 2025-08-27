@@ -9,7 +9,7 @@ use crate::{Round, WrappedQbftMessage};
 #[derive(Default)]
 pub struct MessageContainer {
     /// Messages indexed by round and then by sender
-    messages: HashMap<Round, HashMap<OperatorId, WrappedQbftMessage>>,
+    messages: HashMap<Round, Vec<WrappedQbftMessage>>,
     /// Track unique values per round
     values_by_round: HashMap<Round, HashSet<Hash256>>,
     /// The quorum size for the qbft instance
@@ -30,24 +30,11 @@ impl MessageContainer {
     pub fn add_message(
         &mut self,
         round: Round,
-        sender: OperatorId,
+        _sender: OperatorId,
         msg: &WrappedQbftMessage,
     ) -> bool {
-        // Check if we already have a message from this sender for this round
-        if self
-            .messages
-            .get(&round)
-            .and_then(|msgs| msgs.get(&sender))
-            .is_some()
-        {
-            return false; // Duplicate message
-        }
-
         // Add message and track its value
-        self.messages
-            .entry(round)
-            .or_default()
-            .insert(sender, msg.clone());
+        self.messages.entry(round).or_default().push(msg.clone());
 
         self.values_by_round
             .entry(round)
@@ -63,15 +50,18 @@ impl MessageContainer {
         let round_messages = self.messages.get(&round)?;
 
         // Count occurrences of each value
-        let mut value_counts: HashMap<Hash256, usize> = HashMap::new();
-        for msg in round_messages.values() {
-            *value_counts.entry(msg.qbft_message.root).or_default() += 1;
+        let mut value_counts: HashMap<Hash256, HashSet<OperatorId>> = HashMap::new();
+        for msg in round_messages {
+            value_counts
+                .entry(msg.qbft_message.root)
+                .or_default()
+                .insert(*msg.signed_message.operator_ids().first().expect("pls"));
         }
 
         // Find any value that has reached quorum
         value_counts
             .into_iter()
-            .find(|(_, count)| *count >= self.quorum_size)
+            .find(|(_, count)| count.len() >= self.quorum_size)
             .map(|(value, _)| value)
     }
 
@@ -90,7 +80,7 @@ impl MessageContainer {
         if let Some(hash) = self.has_quorum(round)
             && let Some(round_messages) = self.messages.get(&round)
         {
-            for msg in round_messages.values() {
+            for msg in round_messages {
                 if msg.qbft_message.root == hash {
                     msgs.push(msg.clone());
                 }
@@ -100,15 +90,12 @@ impl MessageContainer {
     }
 
     /// Gets all messages for a specific round
-    pub fn get_messages_for_round(&self, round: Round) -> Vec<&WrappedQbftMessage> {
+    pub fn get_messages_for_round(&self, round: Round) -> &[WrappedQbftMessage] {
         // If we have messages for this round in our container, return them all
         // If not, return an empty vector
         self.messages
             .get(&round)
-            .map(|round_messages| {
-                // Convert the values of the HashMap into a Vec
-                round_messages.values().collect()
-            })
+            .map(|msgs| &msgs[..])
             .unwrap_or_default()
     }
 }
