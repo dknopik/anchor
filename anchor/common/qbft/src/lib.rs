@@ -845,6 +845,12 @@ where
 
     // End the current round and move to the next one, if possible.
     pub fn end_round(&mut self) {
+        // Make sure we are in the correct state
+        if u8::from(self.state) >= u8::from(InstanceState::Complete) {
+            debug!(?self.state, "Ignoring timeout while already completed");
+            return;
+        }
+
         debug!(round = *self.current_round, "Incrementing round");
         let Some(next_round) = self.current_round.next() else {
             self.state = InstanceState::Complete;
