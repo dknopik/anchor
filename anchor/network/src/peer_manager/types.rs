@@ -1,4 +1,5 @@
 use libp2p::swarm::dial_opts::DialOpts;
+use peer_store::memory_store;
 use subnet_service::SubnetId;
 
 /// Actions that the peer manager can request from the network
@@ -24,6 +25,6 @@ impl ConnectActions {
 /// Events emitted by the peer manager
 #[derive(Debug)]
 pub enum Event {
-    PeerStore(peer_store::memory_store::Event),
+    PeerStore(peer_store::Event<memory_store::Event>),
     Heartbeat(crate::peer_manager::heartbeat::Event),
 }

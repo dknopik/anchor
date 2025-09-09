@@ -27,11 +27,11 @@ use libp2p::{
 use network_utils::enr_ext::{CombinedKeyExt, EnrExt, QUIC_ENR_KEY, QUIC6_ENR_KEY};
 use ssv_types::domain_type::DomainType;
 use ssz::{Decode, Encode};
+use ssz_types::{BitVector, Bitfield, length::Fixed, typenum::U128};
 use subnet_service::SubnetId;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
-use types::{BitVector, typenum::U128};
 
 use crate::{
     Config,
@@ -689,7 +689,7 @@ pub fn save_enr_to_disk(path: &Path, enr: &Enr) {
     }
 }
 
-pub fn committee_bitfield(enr: &Enr) -> Result<BitVector<U128>, &'static str> {
+pub fn committee_bitfield(enr: &Enr) -> Result<Bitfield<Fixed<U128>>, &'static str> {
     let bitfield_bytes: Bytes = enr
         .get_decodable("subnets")
         .ok_or("ENR subnet bitfield non-existent")?
@@ -702,7 +702,7 @@ pub fn committee_bitfield(enr: &Enr) -> Result<BitVector<U128>, &'static str> {
 /// Returns the predicate for a given subnet.
 pub fn subnet_predicate(subnets: Vec<SubnetId>) -> impl Fn(&Enr) -> bool + Send {
     move |enr: &Enr| {
-        let committee_bitfield: BitVector<U128> = match committee_bitfield(enr) {
+        let committee_bitfield: Bitfield<Fixed<U128>> = match committee_bitfield(enr) {
             Ok(b) => b,
             Err(_e) => return false,
         };

@@ -94,13 +94,13 @@ impl AnchorBehaviour {
             .validate_messages()
             .build()?;
 
-        let mut gossipsub =
-            gossipsub::Behaviour::new(MessageAuthenticity::RandomAuthor, gossipsub_config)
-                .map_err(|e| Gossipsub(e.to_string()))?;
-        gossipsub = gossipsub.with_metrics(
+        let mut gossipsub = gossipsub::Behaviour::new_with_metrics(
+            MessageAuthenticity::RandomAuthor,
+            gossipsub_config,
             metrics_registry.sub_registry_with_prefix("gossipsub"),
             gossipsub::MetricsConfig::default(),
-        );
+        )
+        .map_err(|e| Gossipsub(e.to_string()))?;
 
         // Add peer scoring if not disabled
         if !network_config.disable_gossipsub_peer_scoring {
