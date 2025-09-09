@@ -2437,39 +2437,6 @@ dependencies = [
 [[package]]
 name = "discv5"
 version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4b4e7798d2ff74e29cee344dc490af947ae657d6ab5273dde35d58ce06a4d71"
-dependencies = [
- "aes 0.8.4",
- "aes-gcm",
- "alloy-rlp",
- "arrayvec",
- "ctr 0.9.2",
- "delay_map",
- "enr",
- "fnv",
- "futures",
- "hashlink 0.9.1",
- "hex",
- "hkdf",
- "lazy_static",
- "libp2p-identity",
- "lru 0.12.5",
- "more-asserts",
- "multiaddr",
- "parking_lot",
- "rand 0.8.5",
- "smallvec",
- "socket2 0.5.10",
- "tokio",
- "tracing",
- "uint 0.10.0",
- "zeroize",
-]
-
-[[package]]
-name = "discv5"
-version = "0.9.1"
 source = "git+https://github.com/sigp/discv5?branch=mallory#fd2441ca1fe430618eaeb0b7011dec175ee74fd1"
 dependencies = [
  "aes 0.8.4",
@@ -2844,7 +2811,7 @@ version = "0.2.0"
 source = "git+https://github.com/sigp/lighthouse?rev=10396b28#10396b2813b28c216361e446f7879a042e1656c5"
 dependencies = [
  "bytes",
- "discv5 0.9.1 (git+https://github.com/sigp/discv5?branch=mallory)",
+ "discv5",
  "eth2_config",
  "kzg",
  "pretty_reqwest_error",
@@ -3718,7 +3685,7 @@ dependencies = [
  "metrics",
  "network_utils",
  "parking_lot",
- "prometheus-client",
+ "prometheus-client 0.23.1",
  "serde",
  "slot_clock",
  "tokio",
@@ -4368,7 +4335,7 @@ dependencies = [
  "libp2p-ping",
  "libp2p-quic",
  "libp2p-request-response",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "libp2p-tcp",
  "libp2p-upnp",
  "libp2p-yamux",
@@ -4386,7 +4353,7 @@ checksum = "d16ccf824ee859ca83df301e1c0205270206223fd4b1f2e512a693e1912a8f4a"
 dependencies = [
  "libp2p-core",
  "libp2p-identity",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
 ]
 
 [[package]]
@@ -4397,7 +4364,7 @@ checksum = "a18b8b607cf3bfa2f8c57db9c7d8569a315d5cc0a282e6bfd5ebfc0a9840b2a0"
 dependencies = [
  "libp2p-core",
  "libp2p-identity",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
 ]
 
 [[package]]
@@ -4443,25 +4410,27 @@ dependencies = [
 
 [[package]]
 name = "libp2p-gossipsub"
-version = "0.50.0"
-source = "git+https://github.com/sigp/rust-libp2p.git?rev=2a726cd#2a726cdbec1f055854755dc03a632d804e268543"
+version = "0.49.0"
+source = "git+https://github.com/sigp/rust-libp2p.git?branch=mallory#cc2af3b0a6f95dd56a512798987bb7d96ef01a8b"
 dependencies = [
  "async-channel 2.5.0",
  "asynchronous-codec",
  "base64 0.22.1",
  "byteorder",
  "bytes",
+ "delay_map",
  "either",
  "fnv",
  "futures",
  "futures-timer",
  "getrandom 0.2.16",
  "hashlink 0.9.1",
+ "hex",
  "hex_fmt",
  "libp2p-core",
  "libp2p-identity",
- "libp2p-swarm",
- "prometheus-client",
+ "libp2p-swarm 0.46.0",
+ "prometheus-client 0.22.3",
  "quick-protobuf",
  "quick-protobuf-codec",
  "rand 0.8.5",
@@ -4484,7 +4453,7 @@ dependencies = [
  "futures-timer",
  "libp2p-core",
  "libp2p-identity",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "quick-protobuf",
  "quick-protobuf-codec",
  "smallvec",
@@ -4523,7 +4492,7 @@ dependencies = [
  "if-watch",
  "libp2p-core",
  "libp2p-identity",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "rand 0.8.5",
  "smallvec",
  "socket2 0.5.10",
@@ -4542,9 +4511,9 @@ dependencies = [
  "libp2p-identify",
  "libp2p-identity",
  "libp2p-ping",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "pin-project",
- "prometheus-client",
+ "prometheus-client 0.23.1",
  "web-time",
 ]
 
@@ -4577,7 +4546,7 @@ version = "0.1.0"
 source = "git+https://github.com/libp2p/rust-libp2p.git?rev=ad9a1b2#ad9a1b27587f384f644f30f8fccb2b9e6ad47edb"
 dependencies = [
  "libp2p-core",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "lru 0.12.5",
 ]
 
@@ -4591,7 +4560,7 @@ dependencies = [
  "futures-timer",
  "libp2p-core",
  "libp2p-identity",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "rand 0.8.5",
  "tracing",
  "web-time",
@@ -4646,10 +4615,31 @@ dependencies = [
  "futures-bounded",
  "libp2p-core",
  "libp2p-identity",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "rand 0.8.5",
  "smallvec",
  "tracing",
+]
+
+[[package]]
+name = "libp2p-swarm"
+version = "0.46.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "803399b4b6f68adb85e63ab573ac568154b193e9a640f03e0f2890eabbcb37f8"
+dependencies = [
+ "either",
+ "fnv",
+ "futures",
+ "futures-timer",
+ "libp2p-core",
+ "libp2p-identity",
+ "lru 0.12.5",
+ "multistream-select",
+ "once_cell",
+ "rand 0.8.5",
+ "smallvec",
+ "tracing",
+ "web-time",
 ]
 
 [[package]]
@@ -4697,7 +4687,7 @@ dependencies = [
  "libp2p-core",
  "libp2p-identity",
  "libp2p-plaintext",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "libp2p-tcp",
  "libp2p-yamux",
  "tracing",
@@ -4748,7 +4738,7 @@ dependencies = [
  "futures-timer",
  "igd-next",
  "libp2p-core",
- "libp2p-swarm",
+ "libp2p-swarm 0.47.0",
  "tokio",
  "tracing",
 ]
@@ -5323,7 +5313,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "dirs",
- "discv5 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "discv5",
  "ethereum_ssz",
  "futures",
  "global_config",
@@ -5335,7 +5325,7 @@ dependencies = [
  "message_receiver",
  "metrics",
  "network_utils",
- "prometheus-client",
+ "prometheus-client 0.23.1",
  "quick-protobuf",
  "rand 0.9.2",
  "serde",
@@ -5357,7 +5347,7 @@ name = "network_utils"
 version = "0.1.0"
 source = "git+https://github.com/sigp/lighthouse?rev=10396b28#10396b2813b28c216361e446f7879a042e1656c5"
 dependencies = [
- "discv5 0.9.1 (git+https://github.com/sigp/discv5?branch=mallory)",
+ "discv5",
  "libp2p-identity",
  "lru_cache",
  "metrics",
@@ -6047,6 +6037,18 @@ dependencies = [
  "memchr",
  "parking_lot",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "prometheus-client"
+version = "0.22.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "504ee9ff529add891127c4827eb481bd69dc0ebc72e9a682e187db4caa60c3ca"
+dependencies = [
+ "dtoa",
+ "itoa",
+ "parking_lot",
+ "prometheus-client-derive-encode",
 ]
 
 [[package]]
