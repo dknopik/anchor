@@ -38,11 +38,27 @@ pub struct Register {
     #[clap(long, help = "Mnemonic to use", value_name = "MNEMONIC")]
     pub mnemonic: Option<String>,
 
+    #[clap(
+        long,
+        help = "Mnemonic index to use",
+        default_value = "0",
+        value_name = "INDEX"
+    )]
+    pub mnemonic_index: u32,
+
     #[clap(long, help = "RPC endpoint to access L1 data", value_name = "ENDPOINT")]
     pub rpc: Option<String>,
 
     #[clap(long, help = "Mainnet, Holesky or Hoodi", value_name = "NETWORK")]
     pub network: String,
+
+    #[clap(
+        long,
+        help = "How many tokens to deposit per validator",
+        default_value = "1",
+        value_name = "SSV"
+    )]
+    pub ssv_per_validator: u128,
 
     #[clap(help = "Validator share file", value_name = "SHARE_FILE")]
     pub share_file: String,
@@ -79,7 +95,7 @@ pub fn register_validator(options: Register) -> Result<(), String> {
         .wallet(
             MnemonicBuilder::<English>::default()
                 .phrase(mnemonic)
-                .index(0)
+                .index(options.mnemonic_index)
                 .map_err(|_| "Invalid mnemonic")?
                 .build()
                 .map_err(|_| "Invalid mnemonic")?,
@@ -100,6 +116,8 @@ pub fn register_validator(options: Register) -> Result<(), String> {
         count += 1;
         !split
     });
+
+    let one_ssv: u128 = 1_000_000_000_000_000_000;
 
     let mut cluster_states = HashMap::new();
 
@@ -139,28 +157,48 @@ pub fn register_validator(options: Register) -> Result<(), String> {
             let cluster = match cluster_states.entry(operator_ids) {
                 Entry::Occupied(occupied) => occupied.into_mut(),
                 Entry::Vacant(vacant) => {
-                    let cluster = scanner.get_cluster_data(provider.wallet().default_signer().address(), vacant.key().as_slice()).await.map_err(|e| format!("{e}"))?;
+                    let cluster = scanner
+                        .get_cluster_data(
+                            provider.wallet().default_signer().address(),
+                            vacant.key().as_slice(),
+                        )
+                        .await
+                        .map_err(|e| format!("{e}"))?;
                     vacant.insert(cluster)
                 }
             };
 
             let receipt = if let [share] = chunk {
-                contract.registerValidator(
-                    share.payload.public_key.serialize().into(),
-                    share.data.operators.iter().map(|o| o.id).collect(),
-                    datas.pop().ok_or("missing data")?,
-                    U256::from_str("100_000000000000000000").unwrap(), // todo make configurable
-                    cluster.clone(),
-                )
+                contract
+                    .registerValidator(
+                        share.payload.public_key.serialize().into(),
+                        share.data.operators.iter().map(|o| o.id).collect(),
+                        datas.pop().ok_or("missing data")?,
+                        U256::from(options.ssv_per_validator.checked_mul(one_ssv).unwrap()),
+                        cluster.clone(),
+                    )
                     .send()
                     .await
             } else {
                 contract
                     .bulkRegisterValidator(
-                        chunk.iter().map(|s| s.payload.public_key.serialize().into()).collect(),
-                        chunk.first().map(|s| s.data.operators.iter().map(|o| o.id).collect()).ok_or("empty")?,
+                        chunk
+                            .iter()
+                            .map(|s| s.payload.public_key.serialize().into())
+                            .collect(),
+                        chunk
+                            .first()
+                            .map(|s| s.data.operators.iter().map(|o| o.id).collect())
+                            .ok_or("empty")?,
                         datas,
-                        U256::from_str("100_000000000000000000").unwrap(), // todo make configurable
+                        U256::from(
+                            options
+                                .ssv_per_validator
+                                .checked_mul(one_ssv)
+                                .unwrap()
+                                .checked_mul(chunk.len() as u128)
+                                .unwrap(),
+                        ),
                         cluster.clone(),
                     )
                     .send()
