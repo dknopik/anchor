@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc};
+use std::{collections::HashSet, future::Future, sync::Arc};
 
 use beacon_node_fallback::BeaconNodeFallback;
 use bls::PublicKeyBytes;
@@ -88,37 +88,54 @@ impl<T: SlotClock + 'static> DutiesTracker<T> {
             let network_state = self.network_state_rx.borrow();
             network_state.validator_indices()
         };
+        let all_validator_indices: HashSet<_> = validator_indices.iter().copied().collect();
+        let unfetched_validator_indices =
+            sync_duties.get_unfetched_validators(&all_validator_indices);
 
         // If duties aren't known for the current period, poll for them.
-        if !sync_duties.all_duties_known(current_sync_committee_period, &validator_indices) {
-            self.poll_sync_committee_duties_for_period(
-                validator_indices.as_slice(),
-                current_sync_committee_period,
-            )
-            .await?;
-
-            // Prune previous duties.
-            sync_duties.prune(current_sync_committee_period);
-        }
+        self.poll_sync_committee_duties_for_period_if_necessary(
+            current_sync_committee_period,
+            &validator_indices,
+            &unfetched_validator_indices,
+        )
+        .await?;
 
         // If we're past the point in the current period where we should determine duties for the
         // next period and they are not yet known, then poll.
         if current_epoch.as_u64() % spec.epochs_per_sync_committee_period.as_u64()
             >= epoch_offset(spec)
-            && !sync_duties.all_duties_known(next_sync_committee_period, &validator_indices)
         {
-            self.poll_sync_committee_duties_for_period(
-                &validator_indices,
+            self.poll_sync_committee_duties_for_period_if_necessary(
                 next_sync_committee_period,
+                &validator_indices,
+                &unfetched_validator_indices,
             )
             .await?;
-
-            // Prune (this is the main code path for updating duties, so we should almost always hit
-            // this prune).
-            sync_duties.prune(current_sync_committee_period);
         }
 
+        sync_duties.mark_validators_fetched(all_validator_indices);
+
+        // Prune previous duties.
+        sync_duties.prune(current_sync_committee_period);
+
         Ok(())
+    }
+
+    async fn poll_sync_committee_duties_for_period_if_necessary(
+        &self,
+        period: u64,
+        validator_indices: &[u64],
+        unfetched_validator_indices: &[u64],
+    ) -> Result<(), Error> {
+        if !self.duties.sync_duties.any_duties_known(period) {
+            self.poll_sync_committee_duties_for_period(validator_indices, period)
+                .await
+        } else if !unfetched_validator_indices.is_empty() {
+            self.poll_sync_committee_duties_for_period(unfetched_validator_indices, period)
+                .await
+        } else {
+            Ok(())
+        }
     }
 
     async fn poll_sync_committee_duties_for_period(

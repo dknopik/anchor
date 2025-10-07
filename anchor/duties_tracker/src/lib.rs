@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use bls::PublicKeyBytes;
 use dashmap::DashMap;
 use eth2::types::ProposerData;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use ssv_types::ValidatorIndex;
 use types::{Epoch, Slot};
 
@@ -26,6 +26,7 @@ pub mod voluntary_exit_tracker;
 /// having duties.
 #[derive(Debug)]
 pub struct SyncCommitteePerPeriod {
+    fetched_validators: Mutex<HashSet<u64>>,
     /// Map from sync committee period to validators that are members of that sync committee.
     /// Only validators with actual duties are stored in the HashSet for each period.
     committees: DashMap<u64, HashSet<u64>>,
@@ -34,19 +35,25 @@ pub struct SyncCommitteePerPeriod {
 impl SyncCommitteePerPeriod {
     fn new() -> Self {
         Self {
+            fetched_validators: Mutex::new(HashSet::new()),
             committees: DashMap::new(),
         }
     }
 
+    fn get_unfetched_validators(&self, validators: &HashSet<u64>) -> Vec<u64> {
+        validators
+            .difference(&self.fetched_validators.lock())
+            .cloned()
+            .collect()
+    }
+
+    fn mark_validators_fetched(&self, validators: HashSet<u64>) {
+        *self.fetched_validators.lock() = validators;
+    }
+
     /// Check if duties are already known for all of the given validators for `committee_period`.
-    fn all_duties_known(&self, committee_period: u64, validator_indices: &[u64]) -> bool {
-        self.committees
-            .get(&committee_period)
-            .is_some_and(|validators| {
-                validator_indices
-                    .iter()
-                    .all(|index| validators.contains(index))
-            })
+    fn any_duties_known(&self, committee_period: u64) -> bool {
+        self.committees.contains_key(&committee_period)
     }
 
     /// Prune duties for past sync committee periods from the map.
