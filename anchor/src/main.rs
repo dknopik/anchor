@@ -227,9 +227,7 @@ pub fn enable_logging(
     };
 
     // Log Formatting
-    let anchor_formatter = AnchorFormatter::new()
-        // .with_target() //displays the target as a field
-        .with_ansi(true); // displays colours
+    let anchor_formatter = AnchorFormatter::new().with_ansi(true); // displays colours
 
     logging_layers.push(
         fmt::layer()
@@ -278,11 +276,9 @@ pub fn enable_logging(
 
         if let Some(file_logging_layer) = file_logging_layer {
             // Log Formatting
-            let anchor_formatter_log = if file_logging_flags.logfile_color {
-                AnchorFormatter::new().with_ansi(true)
-            } else {
-                AnchorFormatter::new().with_ansi(false)
-            };
+            let anchor_formatter_log = AnchorFormatter::new()
+                .with_target()
+                .with_ansi(file_logging_flags.logfile_color);
 
             guards.push(file_logging_layer.guard);
             logging_layers.push(

@@ -19,7 +19,7 @@ use tracing_subscriber::{
 pub struct AnchorFormatter {
     timer: SystemTime,
     ansi: bool,
-    display_target: bool,
+    display_module: bool,
 }
 
 impl AnchorFormatter {
@@ -27,7 +27,7 @@ impl AnchorFormatter {
         Self {
             timer: SystemTime,
             ansi: true,
-            display_target: false,
+            display_module: false,
         }
     }
 
@@ -37,7 +37,7 @@ impl AnchorFormatter {
     }
 
     pub fn with_target(mut self) -> Self {
-        self.display_target = true;
+        self.display_module = true;
         self
     }
 }
@@ -117,15 +117,19 @@ where
         let mut field_capture = FieldCapture::new();
         event.record(&mut field_capture);
 
-        let message_str = if let Some(msg) = field_capture.message {
-            msg.trim_matches('"').to_string()
+        if self.display_module {
+            field_capture.other_fields.push(("module".to_string(), meta.target().to_string()));
+        }
+
+        let message_str = if let Some(msg) = &field_capture.message {
+            msg.trim_matches('"')
         } else {
-            String::new()
+            ""
         };
 
         write!(writer, "{}", message_str)?;
 
-        let has_fields = !field_capture.other_fields.is_empty() || self.display_target;
+        let has_fields = !field_capture.other_fields.is_empty();
 
         if has_fields {
             const COLUMN_WIDTH: usize = 50;
@@ -141,23 +145,6 @@ where
             }
 
             let mut first = true;
-
-            if self.display_target {
-                if self.ansi && writer.has_ansi_escapes() {
-                    let dimmed = Style::new().dimmed();
-                    let italic = Style::new().italic();
-                    write!(
-                        writer,
-                        "{}{}\"{}\"",
-                        italic.paint("target"),
-                        dimmed.paint("="),
-                        meta.target()
-                    )?;
-                } else {
-                    write!(writer, "target=\"{}\"", meta.target())?;
-                }
-                first = false;
-            }
 
             if self.ansi && writer.has_ansi_escapes() {
                 let dimmed = Style::new().dimmed();
