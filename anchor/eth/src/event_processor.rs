@@ -30,7 +30,8 @@ pub enum Mode {
         /// Queue to submit validator exits for processing
         exit_tx: ExitTx,
         /// Slashing protection database for validator registration
-        slashing_protection: Arc<SlashingDatabase>,
+        /// None if there is no slashing database to be updated (e.g. in tests)
+        slashing_protection: Option<Arc<SlashingDatabase>>,
     },
     /// Process added validators only by updating the nonce.
     ///
@@ -341,13 +342,15 @@ impl EventProcessor {
         };
 
         // First, do the slashing protection database...
-        slashing_protection
-            .register_validator(validator_pubkey)
-            .map_err(|e| {
-                ExecutionError::Database(format!(
-                    "Failed to insert validator into slashing db: {e}"
-                ))
-            })?;
+        if let Some(slashing_protection) = slashing_protection {
+            slashing_protection
+                .register_validator(validator_pubkey)
+                .map_err(|e| {
+                    ExecutionError::Database(format!(
+                        "Failed to insert validator into slashing db: {e}"
+                    ))
+                })?;
+        }
 
         // ...then the main database.
         self.db

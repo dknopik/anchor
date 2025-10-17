@@ -148,7 +148,7 @@ impl SsvEventSyncer {
             Mode::Node {
                 index_sync_tx,
                 exit_tx,
-                slashing_protection,
+                slashing_protection: Some(slashing_protection),
             },
         );
         debug!("Created event processor - done");
