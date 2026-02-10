@@ -1831,35 +1831,25 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
         .await
     }
 
-    async fn sign_attestation(
+    async fn sign_attestations(
         &self,
-        validator_pubkey: PublicKeyBytes,
-        validator_committee_position: usize,
-        attestation: &mut Attestation<E>,
-        current_epoch: Epoch,
+        mut attestations: Vec<(u64, PublicKeyBytes, usize, Attestation<E>)>,
     ) -> Result<(), Error> {
-        let future = async {
-            if !*self.is_synced.borrow() {
-                return Err(Error::SpecificError(SpecificError::NotSynced));
-            }
+        let mut committee_attestation: HashMap<CommitteeId, Attestation<E>> = HashMap::new();
+        for (_, pubkey, comm_idx, att) in attestations {
+            let (_, cluster) = self.get_validator_and_cluster(pubkey)?;
+            committee_attestation.insert(cluster.committee_id(), att);
+            // TODO: maybe sanity check that the attestation inserted does not overwrite another
+            // *different* existing one.
+        }
 
-            // Make sure the target epoch is not higher than the current epoch to avoid potential
-            // attacks.
-            if attestation.data().target.epoch > current_epoch {
-                return Err(Error::GreaterThanCurrentEpoch {
-                    epoch: attestation.data().target.epoch,
-                    current_epoch,
-                });
-            }
-
-            let (validator, cluster) = self.get_validator_and_cluster(validator_pubkey)?;
+        for (committee, attestation) in committee_attestation {
             let voting_context_tx = self.get_voting_context(attestation.data().slot).await?;
 
-            let validator_attestation_committees = self
-                .get_attesting_validators_in_committee(&voting_context_tx, cluster.committee_id());
+            let validator_attestation_committees =
+                self.get_attesting_validators_in_committee(&voting_context_tx, committee);
 
-            let timer =
-                metrics::start_timer_vec(&metrics::CONSENSUS_TIMES, &[metrics::BEACON_VOTE]);
+            let timer = metrics::start_timer_vec(&metrics::CONSENSUS_TIMES, &[metrics::BEACON_VOTE]);
             let timeout_mode = TimeoutMode::SlotTime {
                 instance_start_time: self.get_instant_in_slot(
                     attestation.data().slot,
@@ -1870,7 +1860,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
                 .qbft_manager
                 .decide_instance(
                     CommitteeInstanceId {
-                        committee: cluster.committee_id(),
+                        committee,
                         instance_height: attestation.data().slot.as_usize().into(),
                     },
                     BeaconVote {
@@ -1901,14 +1891,6 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
             // yay - we agree! let's sign the att we agreed on
             let domain_hash = self.get_domain(current_epoch, Domain::BeaconAttester);
 
-            if !self.disable_slashing_protection {
-                convert_slashing_result(self.slashing_protection.check_and_insert_attestation(
-                    &validator_pubkey,
-                    attestation.data(),
-                    domain_hash,
-                ))?;
-            }
-
             // Calculate signature count for post-consensus committee collection
             let committee_validator_indices =
                 self.get_committee_validator_indices(&cluster.committee_id());
@@ -1916,9 +1898,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
             // Use `voting_message_count_for_committee` for post-consensus (flat counting)
             let num_signatures_to_collect = voting_context_tx
                 .voting_assignments
-                .voting_message_count_for_committee(|idx| {
-                    committee_validator_indices.contains(idx)
-                });
+                .voting_message_count_for_committee(|idx| committee_validator_indices.contains(idx));
 
             let signing_root = attestation.data().signing_root(domain_hash);
             let signature = self
@@ -1939,15 +1919,7 @@ impl<T: SlotClock, E: EthSpec> ValidatorStore for AnchorValidatorStore<T, E> {
                 .add_signature(&signature, validator_committee_position)
                 .map_err(Error::UnableToSignAttestation)?;
 
-            Ok(())
-        };
-
-        run_and_update_metrics(
-            ATTESTATION_LOG_NAME,
-            &validator_metrics::SIGNED_ATTESTATIONS_TOTAL,
-            future,
-        )
-        .await
+        }
     }
 
     async fn sign_validator_registration_data(
